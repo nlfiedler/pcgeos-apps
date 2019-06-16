@@ -1,0 +1,707 @@
+/********************************************************************
+ *
+ * PROJECT:     Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:      Objects Module
+ * FILE:        appUI.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *
+ * DESCRIPTION:
+ *      This is a file manager for the Hewlett-Packard OmniGo 100.
+ *      This module holds all the class and method declarations,
+ *      as well as the static object definitions for the primary
+ *      UI objects.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Internal/Jedi/jtable.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Global Definitions
+ *******************************************************************/
+      /*
+       * aDrives_g        - Contains drive numbers.
+       *                    First entry holds token of first
+       *                    available drive, second entry holds
+       *                    token of second available drive, ...
+       * mhClipItems_g    - Item clipboard - holds names of copied items.
+       * cClipItems_g     - Number of items in the clipboard.
+       * acrSourcePath_g,
+       * dhSourceDisk_g   - Source path and disk for clipboard items.
+       * bCancelProcess_g - Tells process thread to stop doing
+       *                    what it's doing.
+       */
+    word         aDrives_g[HIGHEST_DRIVE];
+    MemHandle    mhClipItems_g;
+    word         cClipItems_g;
+    FMPathBuffer acrSourcePath_g;
+    DiskHandle   dhSourceDisk_g;
+    Boolean      bCancelProcess_g;
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl FMProcessClass, neverSaved;
+    @classdecl FMApplicationClass;
+    @classdecl FMViewClass;
+    @classdecl FMDirectoryClass;
+
+/********************************************************************
+ *              Method Declarations
+ * If you don't do this, the method will not be executed.
+ *******************************************************************/
+    @extern method FMProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION;
+    @extern method FMProcessClass, MSG_GEN_PROCESS_CLOSE_APPLICATION;
+    @extern method FMProcessClass, MSG_FMP_GOTO_WORLD;
+    @extern method FMProcessClass, MSG_FMP_GOTO_DOCUMENT;
+    @extern method FMProcessClass, MSG_FMP_GO_UP_ONE;
+    @extern method FMProcessClass, MSG_FMP_OPEN_DIRECTORY;
+    @extern method FMProcessClass, MSG_FMP_CREATE_FOLDER;
+    @extern method FMProcessClass, MSG_FMP_REFRESH_DRIVES;
+    @extern method FMProcessClass, MSG_FMP_DRIVE_LIST_APPLY;
+    @extern method FMProcessClass, MSG_FMP_DRIVE_LIST_MONIKER_QUERY;
+    @extern method FMProcessClass, MSG_FMP_RENAME_DISK;
+    @extern method FMProcessClass, MSG_FMP_INVERT_SELECTED_ITEMS,
+                                   MSG_FMP_SELECT_ALL_ITEMS,
+                                   MSG_FMP_UNSELECT_ALL_ITEMS;
+    @extern method FMProcessClass, MSG_FMP_COPY_ITEMS;
+    @extern method FMProcessClass, MSG_FMP_RENAME_ITEMS;
+    @extern method FMProcessClass, MSG_FMP_DELETE_ITEMS;
+    @extern method FMProcessClass, MSG_FMP_PASTE_ITEMS;
+    @extern method FMProcessClass, MSG_FMP_PASTE_ORIGINAL_ITEMS;
+
+    @extern method FMApplicationClass, MSG_FM_APP_STOP_PROCESS;
+
+    @extern method FMViewClass, MSG_GEN_VIEW_SCROLL_UP;
+    @extern method FMViewClass, MSG_GEN_VIEW_SCROLL_DOWN;
+
+    @extern method FMDirectoryClass, MSG_TABLE_QUERY_DRAW;
+    @extern method FMDirectoryClass, MSG_TABLE_SELECT;
+    @extern method FMDirectoryClass, MSG_TABLE_STRING_LOCATE;
+    @extern method FMDirectoryClass, MSG_TABLE_CHAR_LOCATE;
+
+/********************************************************************
+ *              GOC Static Objects
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start Application;
+
+@object FMApplicationClass FMApp = {
+    GI_visMoniker = list { @FMTextMoniker };
+    GI_comp = @FMPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+        @FMPrimary;
+    ATTR_GEN_INIT_FILE_CATEGORY = INI_CATEGORY;
+    HINT_APP_IS_PRODUCTIVITY_ORIENTED;
+}
+
+@visMoniker FMTextMoniker = "File Manager";
+@localize { "This name appears on the main title bar." };
+
+@end Application;
+
+/********************************************************************
+ *              Interface Resource
+ *******************************************************************/
+@start Interface;
+
+@object GenPrimaryClass FMPrimary = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @FMFileGroup,
+              @FMDiskGroup,
+              @FMEditGroup,
+              @FMUtilitiesGroup,
+              @FMDriveMenu,
+              @FMMainInteraction,
+              @FMDummyGroup;
+    ATTR_GEN_HELP_CONTEXT = "TOC";
+}
+
+  /* File menu */
+@object GenInteractionClass FMFileGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @FMRenameTrigger,
+              @FMDeleteTrigger,
+              @FMAboutBox;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_FILE_MENU );
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Renames the selected items. */
+@object GenTriggerClass FMRenameTrigger = {
+    GI_visMoniker = 'R', "Rename";
+    @localize { "Renames the selected files/directories." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_RENAME_ITEMS;
+}
+
+  /* Deletes the selected items. */
+@object GenTriggerClass FMDeleteTrigger = {
+    GI_visMoniker = 'D', "Delete";
+    @localize { "Deletes the selected files/directories." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_DELETE_ITEMS;
+}
+
+  /* Credits and copyright messages */
+@object GenInteractionClass FMAboutBox = {
+    GI_visMoniker = 'A', "About";
+    @localize { "Name of dialog containing author information." };
+    GI_comp = @FMAboutText1,
+              @FMAboutText2,
+              @FMAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    ATTR_GEN_HELP_CONTEXT = "dbCredits";
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+@object GenGlyphClass FMAboutText1 = {
+    GI_visMoniker = "HP OmniGo 100 File Manager";
+}
+
+@object GenGlyphClass FMAboutText2 = {
+    GI_visMoniker = "Blue Marsh Softworks, 1996";
+}
+
+  /* Makes About box go away. */
+@object GenTriggerClass FMAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Disk menu */
+@object GenInteractionClass FMDiskGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'D', "Disk";
+    @localize { "Menu containing disk functions." };
+    GI_comp = @FMDiskRenameTrigger;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Renames current disk. */
+@object GenTriggerClass FMDiskRenameTrigger = {
+    GI_visMoniker = 'R', "Rename";
+    @localize { "Renames the currently opened disk." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_RENAME_DISK;
+}
+
+  /* Allow user to copy and paste items. */
+@object GenInteractionClass FMEditGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'E', "Edit";
+    @localize { "Menu for copy, paste, select functions." };
+    GI_comp = @FMCopyTrigger,
+              @FMPasteCopyTrigger,
+              @FMPasteOrigTrigger,
+              @FMInvertSelectionTrigger,
+              @FMSelectAllTrigger,
+              @FMUnselectAllTrigger;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+@object GenTriggerClass FMCopyTrigger = {
+    GI_visMoniker = 'C', "Copy";
+    @localize { "Copy selected items to \'clipboard\'." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_COPY_ITEMS;
+}
+
+  /* Makes copies of items on clipboard. */
+@object GenTriggerClass FMPasteCopyTrigger = {
+    GI_visMoniker = 'P', "Paste a Copy";
+    @localize { "Copy files from \'clipboard\' to current directory." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_PASTE_ITEMS;
+}
+
+  /* Moves items on clipboard. */
+@object GenTriggerClass FMPasteOrigTrigger = {
+    GI_visMoniker = 'O', "Paste the Original";
+    @localize { "Move files from \'clipboard\' to current directory." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_PASTE_ORIGINAL_ITEMS;
+}
+
+  /* Flips the selected state of all the items. */
+@object GenTriggerClass FMInvertSelectionTrigger = {
+    GI_visMoniker = 'I', "Invert Selection";
+    @localize { "Toggle selection of all files in directory listing." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_INVERT_SELECTED_ITEMS;
+}
+
+  /* Selects all of the items. */
+@object GenTriggerClass FMSelectAllTrigger = {
+    GI_visMoniker = 'S', "Select All";
+    @localize { "Select all files/directories in listing." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_SELECT_ALL_ITEMS;
+}
+
+  /* Selects all of the items. */
+@object GenTriggerClass FMUnselectAllTrigger = {
+    GI_visMoniker = 'U', "Unselect All";
+    @localize { "Unselect all files/directories in listing." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_UNSELECT_ALL_ITEMS;
+}
+
+  /* Other options. */
+@object GenInteractionClass FMUtilitiesGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'U', "Util.";
+    @localize { "Menu containing other functions." };
+    GI_comp = @FMCreateDirBox,
+              @FMRefreshDrivesTrigger;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Create new folder. */
+@object GenInteractionClass FMCreateDirBox = {
+    GI_visMoniker = 'C', "Create Folder";
+    @localize { "Create a new directory." };
+    GI_comp = @FMCreateDirText1,
+              @FMCreateDirText2,
+              @FMCreateDirOkayTrigger,
+              @FMCreateDirCancelTrigger;
+    GII_visibility = GIV_DIALOG;
+    ATTR_GEN_HELP_CONTEXT = "dbCreate";
+}
+
+@object GenGlyphClass FMCreateDirText1 = {
+    GI_visMoniker = "Enter name for new folder.";
+    @localize { "When creating a new directory." };
+}
+
+@object GenTextClass FMCreateDirText2 = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    GTXI_attrs = @default | GTA_SINGLE_LINE_TEXT;
+    GTXI_maxLength = FILE_LONGNAME_LENGTH;
+    GTXI_destination = process;
+    GTXI_applyMsg = MSG_FMP_CREATE_FOLDER;
+    ATTR_GEN_TEXT_SET_OBJECT_ENABLED_WHEN_TEXT_EXISTS = {
+        @FMCreateDirOkayTrigger
+    };
+}
+
+@object GenTriggerClass FMCreateDirOkayTrigger = {
+    GI_visMoniker = "Create";
+    @localize { "Button to create the new directory." };
+    GI_states = @default & ~GS_ENABLED;
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_CREATE_FOLDER;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenTriggerClass FMCreateDirCancelTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_DISMISS };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Causes the drive list to be updated. */
+@object GenTriggerClass FMRefreshDrivesTrigger = {
+    GI_visMoniker = "Refresh Drives";
+    @localize { "Forces a rescan of the available drives." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_REFRESH_DRIVES;
+}
+
+  /* Holds the drive list. */
+@object GenInteractionClass FMDriveMenu = {
+    GI_visMoniker = 'r', "Drive";
+    @localize { "Menu listing the available drives." };
+    GI_comp = @FMDriveList;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Displays list of drives. */
+@object GenDynamicListClass FMDriveList = {
+    GIGI_destination = process;
+    GIGI_applyMsg = MSG_FMP_DRIVE_LIST_APPLY;
+    GDLI_queryMsg = MSG_FMP_DRIVE_LIST_MONIKER_QUERY;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_EXPAND_HEIGHT_TO_FIT_PARENT;
+}
+
+  /* Holds GenView */
+@object GenInteractionClass FMMainInteraction = {
+    GI_comp = @FMVolumePathText,
+              @FMSpaceAvailText,
+              @FMView,
+              @FMBottomInteraction;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_EXPAND_HEIGHT_TO_FIT_PARENT;
+}
+
+  /* Displays the path of the current directory. */
+@object GenTextClass FMVolumePathText = {
+    GI_attrs = @default | GA_READ_ONLY;
+    GTXI_attrs = @default | GTA_TAIL_ORIENTED
+                          | GTA_SINGLE_LINE_TEXT
+                          | GTA_NO_WORD_WRAPPING;
+    ATTR_GEN_TEXT_NEVER_MAKE_SCROLLABLE;
+    ATTR_GEN_TEXT_DOES_NOT_ACCEPT_INK;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_TEXT_NO_FRAME;
+    HINT_TEXT_DO_NOT_MAKE_LARGER_ON_PEN_SYSTEMS;
+}
+
+  /* Displays the available drive space. */
+@object GenTextClass FMSpaceAvailText = {
+    GI_attrs = @default | GA_READ_ONLY;
+}
+
+  /* Holds the directory contents. */
+@object FMViewClass FMView = {
+    GVI_vertAttrs = @default | GVDA_SCROLLABLE
+                             | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_content = @FMTableContent;
+    ATTR_GEN_VIEW_DOES_NOT_ACCEPT_TEXT_INPUT;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+}
+
+  /* Organizes the navigation buttons. */
+@object GenInteractionClass FMBottomInteraction = {
+    GI_comp = @FMUpOneTrigger,
+              @FMOpenDirTrigger,
+              @FMWorldTrigger,
+              @FMDocumentTrigger;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+  /* Switch to the parent directory. */
+@object GenTriggerClass FMUpOneTrigger = {
+    GI_visMoniker = "Up One";
+    @localize { "Button to move up one directory in the path." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_GO_UP_ONE;
+}
+
+  /* Switch to the first selected directory. */
+@object GenTriggerClass FMOpenDirTrigger = {
+    GI_visMoniker = "Open Dir";
+    @localize { "Opens first selected directory." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_OPEN_DIRECTORY;
+}
+
+  /* Switch to the WORLD directory. */
+@object GenTriggerClass FMWorldTrigger = {
+    GI_visMoniker = "World";
+    @localize { "Goes to the directory containing the applications." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_GOTO_WORLD;
+}
+
+  /* Switch to the DOCUMENT directory. */
+@object GenTriggerClass FMDocumentTrigger = {
+    GI_visMoniker = "Document";
+    @localize { "Goes to the directory containing documents." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FMP_GOTO_DOCUMENT;
+}
+
+  /* Provides path to program-initiated dialogs. */
+@object GenInteractionClass FMDummyGroup = {
+    GI_comp = @FMRenameBox,
+              @FMReplaceBox,
+              @FMDiskRenameBox,
+              @FMBusyBox;
+    GII_attrs = @default | GIA_NOT_USER_INITIATABLE;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+  /* Allows renaming of an item. */
+@object GenInteractionClass FMRenameBox = {
+    GI_visMoniker = "Rename";
+    @localize { "Title of the file renaming box." };
+    GI_comp = @FMRenameText1,
+              @FMRenameInputText,
+              @FMRenameOkayTrigger,
+              @FMRenameSkipTrigger,
+              @FMRenameCancelTrigger;
+    GII_type = GIT_AFFIRMATION;
+    GII_visibility = GIV_DIALOG;
+    GII_attrs = @default | GIA_INITIATED_VIA_USER_DO_DIALOG
+                         | GIA_MODAL;
+    ATTR_GEN_HELP_CONTEXT = "dbRename";
+}
+
+@object GenGlyphClass FMRenameText1 = {
+    GI_visMoniker = "Enter a new name for this item:";
+    @localize { "Prompt for renaming a file." };
+}
+
+@object GenTextClass FMRenameInputText = {
+    GTXI_attrs = @default | GTA_SINGLE_LINE_TEXT;
+    GTXI_maxLength = FILE_LONGNAME_LENGTH;
+}
+
+@object GenTriggerClass FMRenameOkayTrigger = {
+    GI_visMoniker = "Rename";
+    @localize { "Button to rename the file." };
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_YES };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenTriggerClass FMRenameSkipTrigger ={
+    GI_visMoniker = "Skip";
+    @localize { "Button to skip renaming this file." };
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_NO };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenTriggerClass FMRenameCancelTrigger = {
+    GI_visMoniker = "Cancel";
+    @localize { "Stop renaming all files." };
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_DISMISS };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Have user decide to replace file. */
+@object GenInteractionClass FMReplaceBox = {
+    GI_visMoniker = "File Already Exists";
+    @localize { "Title of dialog asking to replace file." };
+    GI_comp = @FMReplaceText1,
+              @FMReplaceText2,
+              @FMReplaceYesTrigger,
+              @FMReplaceAllTrigger,
+              @FMReplaceNoTrigger,
+              @FMReplaceCancelTrigger;
+    GII_type = GIT_AFFIRMATION;
+    GII_visibility = GIV_DIALOG;
+    GII_attrs = @default | GIA_INITIATED_VIA_USER_DO_DIALOG
+                         | GIA_MODAL;
+    ATTR_GEN_HELP_CONTEXT = "dbReplace";
+}
+
+@object GenGlyphClass FMReplaceText1 = {
+    GI_visMoniker = "Replace this file?";
+    @localize { "Should we replace this file with the source?" };
+}
+
+@object GenTextClass FMReplaceText2 = {
+    GI_attrs = @default | GA_READ_ONLY;
+}
+
+@object GenTriggerClass FMReplaceYesTrigger = {
+    GI_visMoniker = "Yes";
+    @localize { "Button to replace file with source." };
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenTriggerClass FMReplaceAllTrigger = {
+    GI_visMoniker = "All";
+    @localize { "Button to replace all files with sources." };
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_YES };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenTriggerClass FMReplaceNoTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_NO };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenTriggerClass FMReplaceCancelTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_DISMISS };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Allows renaming of a disk. */
+@object GenInteractionClass FMDiskRenameBox = {
+    GI_visMoniker = "Disk Rename";
+    @localize { "Title of dialog to rename disk." };
+    GI_comp = @FMDiskRenameText1,
+              @FMDiskRenameInputText,
+              @FMDiskRenameOkayTrigger,
+              @FMDiskRenameCancelTrigger;
+    GII_type = GIT_AFFIRMATION;
+    GII_visibility = GIV_DIALOG;
+    GII_attrs = @default | GIA_INITIATED_VIA_USER_DO_DIALOG
+                         | GIA_MODAL;
+    ATTR_GEN_HELP_CONTEXT = "dbRenameDisk";
+}
+
+@object GenGlyphClass FMDiskRenameText1 = {
+    GI_visMoniker = "Enter a new name for the disk:";
+    @localize { "Prompt to enter a new disk name." };
+}
+
+@object GenTextClass FMDiskRenameInputText = {
+    GTXI_attrs = @default | GTA_SINGLE_LINE_TEXT;
+    GTXI_maxLength = FILE_LONGNAME_LENGTH;
+}
+
+@object GenTriggerClass FMDiskRenameOkayTrigger = {
+    GI_visMoniker = "Rename Disk";
+    @localize { "Button to rename the disk." };
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_YES };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenTriggerClass FMDiskRenameCancelTrigger = {
+    GI_visMoniker = "Cancel";
+    @localize { "Button to cancel renaming the disk." };
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_NO };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Processing dialog. */
+@object GenInteractionClass FMBusyBox = {
+    GI_visMoniker = "Processing...";
+    @localize { "Title of dialog displayed when processing an operation." };
+    GI_comp = @FMBusyText,
+              @FMBusyStopTrigger;
+    GII_visibility = GIV_DIALOG;
+    GII_attrs = @default | GIA_NOT_USER_INITIATABLE
+                         | GIA_MODAL;
+}
+
+@object GenTextClass FMBusyText = {
+    GI_attrs = @default | GA_READ_ONLY;
+}
+
+@object GenTriggerClass FMBusyStopTrigger = {
+    GI_visMoniker = "Stop";
+    @localize { "Button that stops the operation in progress." };
+    GTI_destination = FMApp;
+    GTI_actionMsg = MSG_FM_APP_STOP_PROCESS;
+    HINT_SEEK_REPLY_BAR;
+}
+
+@end Interface;
+
+/********************************************************************
+ *              Directory Resource
+ * This resource will contain all of the item objects.
+ *******************************************************************/
+@start Directory;
+
+@object TableContentClass FMTableContent = {
+    VCI_comp = @FMTableLocator,
+               @FMDirectory;
+}
+
+@object LocatorClass FMTableLocator = {
+    LI_destination = @FMDirectory;
+}
+
+@object	FMDirectoryClass FMDirectory = {
+    TI_rows = 0;
+    TI_columns = TABLE_COLS;
+    TI_visibleRows = TABLE_VISIBLE_ROWS;
+    TI_rowHeight = TABLE_ROW_HEIGHT;
+    TI_columnDefinitions = @FMTableDataDefs;
+    TI_selectionDrawStyle = TSDST_FILLED_RECT;
+    TI_borderFlags = TBF_BOX_BORDERS;
+    TI_tableFlags = @default | TF_MAIN_TABLE
+                             | TF_NOTIFY_SELECTION_CHANGED
+                             | TF_ENABLE_AUTO_SCROLLING;
+}
+
+@chunk TableColumnDefinition FMTableDataDefs[] =  {
+    COL_FLAG_DEFS_1, COL_WIDTH_1,
+    COL_FLAG_DEFS_2, COL_WIDTH_2,
+    COL_FLAG_DEFS_3, COL_WIDTH_3
+};
+
+@end Directory;
+
+/********************************************************************
+ *              DirData Resource
+ * Directory data. All the items in a chunk array.
+ *******************************************************************/
+@start DirData;
+
+@chunkArray ItemType FMItems = {
+    { 0, "make BCC happy", 0, 0 }
+};
+
+@end DirData;
+
+/********************************************************************
+ *              Strings Resource
+ * Localizable strings.
+ *******************************************************************/
+@start Strings, data;
+
+@chunk char acrBadFNameErrMsg[] = "No : and \\ allowed in name.";
+@localize { "An error message." };
+
+@chunk char acrOperOnROMErrMsg[] =
+    "Cannot perform operation on read-only device.";
+@localize { "An error message." };
+
+@chunk char acrDeleteItemsMsg[] = "Delete selected items?";
+
+@chunk char acrDeleteErrMsg[] = "Error deleting item:\r\001";
+@localize { "An error message." };
+
+@chunk char acrDelete2ErrMsg[] = "Cannot delete items on a ROM device.";
+@localize { "An error message." };
+
+@chunk char acrDeleteDir1ErrMsg[] = "Could not delete existing directory!";
+@localize { "An error message." };
+
+@chunk char acrDeleteDir2ErrMsg[] = "Could not delete source directory!";
+@localize { "An error message." };
+
+@chunk char acrCreateDirErrMsg[] = "Error creating directory!";
+@localize { "An error message." };
+
+@chunk char acrCreateDir2ErrMsg[] = "Could not create new directory!";
+@localize { "An error message." };
+
+@chunk char acrMoveCopyFileErrMsg[] = "Error copying/moving file!";
+@localize { "An error message." };
+
+@chunk char acrCopy2ErrMsg[] = "Cannot copy to original directory!";
+@localize { "An error message." };
+
+@chunk char acrCopy3ErrMsg[] = "Cannot copy/move to a read-only drive.";
+@localize { "An error message." };
+
+@chunk char acrMove3ErrMsg[] = "Cannot move from a read-only drive.";
+@localize { "An error message." };
+
+@chunk char acrRenameErrMsg[] = "Error renaming:\r\001";
+@localize { "An error message." };
+
+@end Strings;
+

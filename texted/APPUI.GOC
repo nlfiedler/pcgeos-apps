@@ -1,0 +1,618 @@
+/********************************************************************
+ *
+ * Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Text Editor
+ * MODULE:      Static Objects Module
+ * FILE:        appUI.goc
+ *
+ * AUTHORS:     Lawrence Hosken
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version of SimpWP
+ *      EB      12/16/93        Fixed up scrolling, default focus, and
+ *                              targeting text object for EditControl.
+ *      NF      4/1/95          Turned into Text Editor
+ *
+ * DESCRIPTION:
+ *      This is a text file editor for GEOS-based devices. It's
+ *      features include: spell checking, cut/copy/paste/undo,
+ *      font control, point size control, printing, and multi-file
+ *      editing.
+ *
+ *      This module contains the static object definitions.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Objects/vlTextC.goh>
+    @include <Objects/Text/tCtrlC.goh> /* SearchReplaceControlClass */
+    @include <spool.goh>
+    #include <print.h>
+/*    @include <spell.goh>               /* PLATFORM: desktop only */
+    #include <gstring.h>               /* For icon definitions */
+    @include "app.goh"
+    @include "Art/tfeicon.goh"
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+       /*
+        * curPointSize_g - Current point size of text.
+        * curFontID_g    - Current font ID of text.
+        * fatals_g       - Fold in the extra fatal errors.
+        */
+    WWFixed     curPointSize_g;
+    FontID      curFontID_g;
+    FatalErrors fatals_g;
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl TFEProcessClass, neverSaved;
+    @classdecl TFEPrimaryClass;
+    @classdecl TFEDocumentClass;
+    @classdecl TFETextClass;
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+    @extern method TFEProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION;
+    @extern method TFEProcessClass, MSG_META_SAVE_OPTIONS;
+
+    @extern method TFEPrimaryClass, MSG_GEN_DISPLAY_CLOSE;
+
+    @extern method TFEDocumentClass,
+                       MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE;
+    @extern method TFEDocumentClass,
+                       MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT;
+    @extern method TFEDocumentClass,
+                       MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT;
+    @extern method TFEDocumentClass, MSG_GEN_DOCUMENT_ATTACH_FAILED;
+    @extern method TFEDocumentClass, MSG_GEN_DOCUMENT_OPEN;
+    @extern method TFEDocumentClass, MSG_GEN_DOCUMENT_PHYSICAL_REVERT;
+    @extern method TFEDocumentClass, MSG_GEN_DOCUMENT_PHYSICAL_SAVE,
+                                     MSG_GEN_DOCUMENT_PHYSICAL_UPDATE;
+    @extern method TFEDocumentClass,
+                       MSG_GEN_DOCUMENT_PHYSICAL_SAVE_AS_FILE_HANDLE;
+
+    @extern method TFETextClass, MSG_META_TEXT_USER_MODIFIED;
+    @extern method TFETextClass, MSG_PRINT_START_PRINTING;
+    @extern method TFETextClass, MSG_VIS_TEXT_SET_POINT_SIZE;
+    @extern method TFETextClass, MSG_VIS_TEXT_SET_FONT_ID;
+    @extern method TFETextClass, MSG_VIS_TEXT_FREE_ALL_STORAGE;
+    @extern method TFETextClass, MSG_VIS_TEXT_REPLACE_WITH_HWR;
+
+/********************************************************************
+ *              Static Object Resources
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start Application;
+
+@object GenApplicationClass TFEApp = {
+    GI_visMoniker = list { @TFETextMoniker,
+                           @TFELCMoniker,
+                           @TFELMMoniker };
+    GI_comp = @TFEPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+             @TFEPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_ACTIVE_LIST ) =
+@ifdef DESKTOP
+             @TFEDisplayControl,
+@endif
+             @TFEPrintControl,
+             @TFEDocumentControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_APP_STARTUP ) =
+             @TFEDocumentControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_STARTUP_LOAD_OPTIONS ) =
+             @TFEToolControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_SELF_LOAD_OPTIONS ) =
+             @TFEDocumentControl,
+             @TFEEditControl,
+             @TFESearchReplaceControl,
+             @TFEPrintControl,
+             @TFEPtSizeControl,
+@ifdef DESKTOP
+             @TFEDisplayControl,
+             @TFESpellControl,
+@endif
+             @TFEToolControl,
+             @TFEFontControl;
+    ATTR_GEN_INIT_FILE_CATEGORY = TFE_INI_CATEGORY;
+    ATTR_GEN_APPLICATION_PRINT_CONTROL = @TFEPrintControl;
+    HINT_APP_IS_PRODUCTIVITY_ORIENTED;
+}
+
+@visMoniker TFETextMoniker = "Text Editor";
+@localize { "This is the name of the application." };
+
+@end Application;
+
+/********************************************************************
+ *              Interface Resource
+ * Contains primary window and most UI objects.
+ *******************************************************************/
+@start Interface;
+
+@object TFEPrimaryClass TFEPrimary = {
+    GI_comp = @TFEFileGroup,
+              @TFEEditGroup,
+              @TFEOptionsGroup,
+              @TFEFontControl,
+              @TFEPtSizeControl,
+@ifdef DESKTOP
+              @TFEDisplayControl,
+@endif
+              @TFEToolbar,
+              @TFEDisplayGroup;
+    ATTR_GEN_HELP_CONTEXT = "TOC";
+@ifdef DESKTOP
+    HINT_SIZE_WINDOW_AS_RATIO_OF_FIELD = {
+        SWSS_RATIO | PCT_70,
+        SWSS_RATIO | PCT_70
+    };
+@endif
+}
+
+  /* File menu */
+@object GenInteractionClass TFEFileGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @TFEDocumentControl,
+@ifndef DESKTOP
+              @TFESaveTrigger,
+@endif
+              @TFEPrintControl,
+              @TFEAboutBox;
+@ifdef OMNIGO
+    GI_visMoniker = "File";
+    @localize { "Name of the menu containing the document controls, \
+like Switch Document, Close, etc." };
+@endif
+    GII_visibility = GIV_POPUP;
+@ifndef OMNIGO
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_FILE_MENU );
+@endif
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Document control UI */
+@object GenDocumentControlClass TFEDocumentControl = {
+    GDCI_noNameText = "No Document";
+    @localize { "This means no file has been opened yet." };
+    GDCI_documentGroup = @TFEDocumentGroup;
+    GDCI_attrs = ( @default | GDCA_MULTIPLE_OPEN_FILES
+                            | GDCA_NATIVE ) & ~GDCA_VM_FILE;
+    GDCI_features = @default &
+        ~( GDCF_SUPPORTS_TEMPLATES |
+           GDCF_SUPPORTS_USER_SETTABLE_EMPTY_DOCUMENT |
+           GDCF_SUPPORTS_USER_MAKING_SHARED_DOCUMENTS |
+           GDCF_NAME_ON_PRIMARY );
+    GDCI_enableDisableList = @TFEDocEnableList;
+}
+
+  /* These objects become enabled when a document is opened. */
+@chunk optr TFEDocEnableList[] = {
+@ifdef DESKTOP
+    @TFESpellControl,
+@else
+    @TFESaveTrigger,
+@endif
+    @TFEPrintControl,
+    @TFESearchReplaceControl
+};
+
+@ifndef DESKTOP
+
+  /* Allows opened file to be saved. */
+@object GenTriggerClass TFESaveTrigger = {
+    GI_states = @default & ~GS_ENABLED;
+    GI_visMoniker = "Save";
+    @localize { "Causes current document to be saved to disk." };
+    GTI_destination = @TFEDocumentControl;
+    GTI_actionMsg = MSG_GEN_DOCUMENT_CONTROL_INITIATE_SAVE_DOC;
+}
+
+@endif
+
+  /* Print control UI. Output is the text object. */
+@object PrintControlClass TFEPrintControl = {
+    PCI_attrs = ( @default & ~( PCA_PAGE_CONTROLS | PCA_VERIFY_PRINT ) )
+              | PCA_MARK_APP_BUSY
+              | PCA_SHOW_PROGRESS
+              | PCA_PROGRESS_PAGE;
+    PCI_output = ( TO_APP_TARGET );
+    PCI_docNameOutput = @TFEDocumentGroup;
+    PCI_docSizeInfo = { ( 7.5 * 72 ), ( 10 * 72 ), PT_PAPER,
+                        { ( 0.5 * 72 ), ( 0.5 * 72 ),
+                          ( 0.5 * 72 ), ( 0.5 * 72 ) } };
+}
+
+  /* Credits and copyright messages */
+@object GenInteractionClass TFEAboutBox = {
+    GI_visMoniker = "About";
+    @localize { "Name of dialog containing author and copyright \
+information." };
+    GI_comp = @TFEAboutText1,
+              @TFEAboutText2,
+              @TFEAboutText3,
+              @TFEAboutText4,
+              @TFEAboutText5,
+              @TFEAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    ATTR_GEN_HELP_CONTEXT = "dbCredits";
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+@object GenGlyphClass TFEAboutText1 = {
+    GI_visMoniker = "Text Editor";
+}
+
+@object GenGlyphClass TFEAboutText2 = {
+    GI_visMoniker = "Blue Marsh Softworks, 1996";
+}
+
+@object GenGlyphClass TFEAboutText3 = {
+    GI_visMoniker = "Portions of this program are";
+}
+
+@object GenGlyphClass TFEAboutText4 = {
+    GI_visMoniker = "Copyright © Geoworks 1993, 1994";
+}
+
+@object GenGlyphClass TFEAboutText5 = {
+    GI_visMoniker = "and used by permission.";
+}
+
+  /* Makes About box go away. */
+@object GenTriggerClass TFEAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Edit menu */
+@object GenInteractionClass TFEEditGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @TFEEditControl,
+@ifdef DESKTOP
+              @TFESpellControl,
+@endif
+              @TFESearchReplaceControl;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_EDIT_MENU );
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Provides editing tools */
+@object GenEditControlClass TFEEditControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GII_visibility = GIV_SUB_GROUP;
+}
+
+  /* Provides Find and Replace functions. */
+@object SearchReplaceControlClass TFESearchReplaceControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_states = @default & ~GS_ENABLED;
+    GI_visMoniker = 'F', "Find and Replace";
+    @localize { "Title of dialog for finding and replacing text." };
+    GI_kbdAccelerator = control 'F';
+    GII_visibility = GIV_DIALOG;
+    ATTR_SEARCH_CONTROL_INTERACT_ONLY_WITH_TARGETED_TEXT_OBJECTS;
+    ATTR_GEN_DESTINATION_CLASS = { (ClassStruct*)&TFETextClass };
+}
+
+@ifdef DESKTOP
+
+  /* Spell checker UI */
+@object SpellControlClass TFESpellControl = {
+    GI_states = @default & ~GS_ENABLED;
+    GI_visMoniker = 'S', "Check Spelling";
+    @localize { "Title of dialog to check spelling of text." };
+    GII_visibility = GIV_DIALOG;
+    ATTR_GEN_DESTINATION_CLASS = { (ClassStruct*)&TFETextClass };
+}
+
+@endif
+
+  /* Options menu */
+@object GenInteractionClass TFEOptionsGroup = {
+    GI_comp = @TFEToolControl,
+              @TFESaveOptsTrigger,
+              @TFEToolbox;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_OPTIONS_MENU );
+}
+
+  /* Toolbar controller */
+@object GenToolControlClass TFEToolControl = {
+    GI_visMoniker = 'C', "Customize Toolbars";
+    @localize { "Allows user to rearrange tools." };
+    GII_visibility = GIV_DIALOG;
+    GTCI_toolboxList = @TFEToolboxList;
+    GTCI_toolGroupList = @TFEToolGroupList;
+}
+
+  /* Pointer to toolbars and toolbar names. */
+@chunk ToolboxInfo TFEToolboxList[] = {
+    { @TFEToolbar, @TFEToolbarName },
+    { @TFEToolbox, @TFEToolboxName }
+};
+
+@chunk char TFEToolbarName[] = "Toolbar below menu";
+@localize { "Name of toolbar under the menu bar." };
+@chunk char TFEToolboxName[] = "Floating Toolbox";
+@localize { "Name of toolbox that floats freely." };
+
+  /* List of tool groups. */
+@chunk ToolGroupInfo TFEToolGroupList[] = {
+    { @TFEDocumentToolGroup },
+    { @TFEFindToolGroup },
+    { @TFEEditToolGroup },
+@ifdef DESKTOP
+    { @TFESpellToolGroup },
+@endif
+    { @TFEPrintToolGroup },
+    { @TFEFontToolGroup },
+    { @TFEPtSizeToolGroup }
+};
+
+  /* Save options */
+@object GenTriggerClass TFESaveOptsTrigger = {
+    GI_visMoniker = 'S', "Save Configuration";
+    @localize { "Saves the settings to the GEOS.INI file." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_META_SAVE_OPTIONS;
+}
+
+  /* Floating toolbox. */
+@object GenInteractionClass TFEToolbox = {
+    GI_visMoniker = "Floating Toolbox";
+@ifndef DESKTOP
+    GI_comp = @TFEPrintToolGroup,
+              @TFEFontToolGroup,
+              @TFEPtSizeToolGroup;
+@endif
+    GII_visibility = GIV_DIALOG;
+    HINT_TOOLBOX;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_ALLOW_CHILDREN_TO_WRAP;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_FULL_JUSTIFY_CHILDREN_HORIZONTALLY;
+    HINT_INTERACTION_MAKE_RESIZABLE;
+}
+
+  /* Allows change of text font. */
+@object FontControlClass TFEFontControl = {
+    GI_visMoniker = 'F', "Fonts";
+    @localize { "Menu that lists available fonts." };
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Allows change of text size. */
+@object PointSizeControlClass TFEPtSizeControl = {
+    GI_visMoniker = 'S', "Sizes";
+    @localize { "Menu that lists available point sizes." };
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_CONTROL_PROHIBIT_UI = { PSCF_SMALLER |
+                                     PSCF_LARGER };
+    ATTR_GEN_CONTROL_PROHIBIT_TOOLBOX_UI = { PSCTF_SMALLER |
+                                             PSCTF_LARGER
+@ifndef OMNIGO
+                                             | PSCTF_CUSTOM_SIZE
+@endif
+                                           };
+    HINT_SEEK_MENU_BAR;
+}
+
+@ifdef DESKTOP
+
+  /* Window menu, manages multiple displays.
+   * Should be useful only on the desktop. */
+@object GenDisplayControlClass TFEDisplayControl = {
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_WINDOW_MENU );
+}
+
+@endif
+
+  /* Toolbar object, contains tool groups */
+@object GenInteractionClass TFEToolbar = {
+    GI_comp = @TFEDocumentToolGroup,
+              @TFEFindToolGroup,
+              @TFEEditToolGroup
+@ifndef DESKTOP
+              ;
+@else
+              ,
+              @TFESpellToolGroup,
+              @TFEPrintToolGroup,
+              @TFEFontToolGroup,
+              @TFEPtSizeToolGroup;
+@endif
+    HINT_TOOLBOX;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_ALLOW_CHILDREN_TO_WRAP;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_FULL_JUSTIFY_CHILDREN_HORIZONTALLY;
+}
+
+  /* DocumentControl tools */
+@object GenToolGroupClass TFEDocumentToolGroup = {
+    GTGI_controller = @TFEDocumentControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+  /* EditControl tools */
+@object GenToolGroupClass TFEEditToolGroup = {
+    GTGI_controller = @TFEEditControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+  /* SearchReplaceControl tools */
+@object GenToolGroupClass TFEFindToolGroup = {
+    GTGI_controller = @TFESearchReplaceControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+  /* PrintControl tools */
+@object GenToolGroupClass TFEPrintToolGroup = {
+    GTGI_controller = @TFEPrintControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+@ifdef DESKTOP
+
+  /* SpellControl tools */
+@object GenToolGroupClass TFESpellToolGroup = {
+    GTGI_controller = @TFESpellControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+@endif
+
+  /* PointSizeControl tools */
+@object GenToolGroupClass TFEPtSizeToolGroup = {
+    GTGI_controller = @TFEPtSizeControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+  /* FontControl tools */
+@object GenToolGroupClass TFEFontToolGroup = {
+    GTGI_controller = @TFEFontControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+  /* Keeps track of multiple displays. */
+@object GenDisplayGroupClass TFEDisplayGroup = {
+    ATTR_GEN_DESTINATION_CLASS = { (ClassStruct*)&TFEDocumentClass };
+    HINT_DEFAULT_FOCUS;
+    HINT_DEFAULT_TARGET;
+}
+
+@end Interface;
+
+/********************************************************************
+ *              DocGroup Resource
+ * The document objects will be duplicated and managed by this
+ * object. The documents will be children of the DocGroup.
+ *******************************************************************/
+@start DocGroup;
+
+  /* This manages the documents and sends messages. */
+@object GenDocumentGroupClass TFEDocumentGroup = {
+    GDGI_attrs = ( @default | GDGA_NATIVE ) &
+                 ~( GDGA_VM_FILE |
+                    GDGA_SUPPORTS_AUTO_SAVE |
+                    GDGA_AUTOMATIC_CHANGE_NOTIFICATION |
+                    GDGA_AUTOMATIC_DIRTY_NOTIFICATION );
+    GDGI_untitledName = "BLANK";
+    @localize { "Name of a newly created text file." };
+    GDGI_documentClass   = (ClassStruct*)&TFEDocumentClass;
+    GDGI_documentControl = @TFEDocumentControl;
+    GDGI_genDisplayGroup = @TFEDisplayGroup;
+    GDGI_genDisplay      = @TFEDisplay;
+    GDGI_genView         = @TFEView;
+}
+
+@end DocGroup;
+
+/********************************************************************
+ *              Display Resource
+ * This entire resource is duplicated by the GenDocumentGroup each
+ * time it creates a new GenDocument object.
+ * Each GenDocument is linked to the GenView that is the display's
+ * child and is displayed within that GenView.
+ *******************************************************************/
+@start Display;
+
+  /* Holds GenView */
+@object GenDisplayClass TFEDisplay = {
+    GI_states = @default & ~GS_USABLE;
+    GI_comp = @TFEView;
+    ATTR_GEN_DISPLAY_NOT_MINIMIZABLE;
+@ifdef OMNIGO
+    ATTR_GEN_DISPLAY_MAXIMIZED_STATE;
+@endif
+}
+
+  /* Displays the text and handles ink input. */
+@object GenViewClass TFEView = {
+    GVI_attrs = @default | GVA_WINDOW_COORDINATE_MOUSE_EVENTS
+                         | GVA_FOCUSABLE
+                         | GVA_DRAG_SCROLLING;
+@ifdef OMNIGO
+    GVI_horizAttrs = @default | GVDA_NO_SMALLER_THAN_CONTENT
+                              | GVDA_DONT_DISPLAY_SCROLLBAR;
+@endif
+    GVI_vertAttrs = @default | GVDA_SCROLLABLE;
+@ifndef DESKTOP
+    GVI_inkType = GVIT_INK_WITH_STANDARD_OVERRIDE;
+@endif
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_EXPAND_HEIGHT_TO_FIT_PARENT;
+    HINT_DEFAULT_TARGET;
+    HINT_DEFAULT_FOCUS;
+}
+
+@end Display;
+
+/********************************************************************
+ *              Document Resource
+ * This entire resource is duplicated by the GenDocument each
+ * time a new GenDocument object is created.
+ * It contains the text object, the heart of the document.
+ *******************************************************************/
+@start Document, notDetachable;
+
+  /* Main component of the document */
+@object TFETextClass TFEText = {
+    VTI_state = @default | VTS_EDITABLE
+                         | VTS_SELECTABLE
+                         | VTS_TARGETABLE;
+    VTI_features = @default | VTF_ALLOW_UNDO;
+    VTI_output = process;
+    VTI_text = "";
+    VTI_charAttrRuns = @default | ( VTDF_URW_MONO << VTDCA_FONT_OFFSET );
+    VLTI_displayMode = @default | VLTDM_DRAFT_WITH_STYLES;
+    VLTI_attrs = @default | VLTA_EXACT_HEIGHT;
+    VLTI_regionArray = @TFETextRegionArray;
+    TFETI_allowChanges = TRUE;
+}
+
+@chunk ChunkArrayHeader TFETextRegionArray = {
+    0, sizeof( VisLargeTextRegionArrayElement ),
+    0, sizeof( ChunkArrayHeader )
+};
+
+@end Document;
+
+/********************************************************************
+ *              Strings Resource
+ * Localizable strings.
+ *******************************************************************/
+@start Strings, data;
+
+@chunk char acrFileWriteErrMsg[] = "Error in DocWriteFile() \
+calling FileWrite().";
+@localize { "Text Editor couldn't write to the file." };
+
+@end Strings;
+

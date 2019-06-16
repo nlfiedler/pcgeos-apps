@@ -1,0 +1,637 @@
+/********************************************************************
+ *
+ *  Portions Copyright (c) Geoworks 1991-92 -- All Rights Reserved.
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Document/MSG_META Methods
+ * FILE:        docmeta.goc
+ *
+ * AUTHORS:     Brian Chin
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial version
+ *      NF      8/8/95          Added file support
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file contains the document methods for the Meta
+ *      class.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/clipbrd.goh>
+    @include <objects/vltextc.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Code for SBDocumentClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_META_CLIPBOARD_CUT
+ ********************************************************************
+ * SYNOPSIS:     Copy the selected text to the clipboard, then
+ *               delete it from our own display.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: The text block is freed . The view is forced to
+ *               redraw.
+ * STRATEGY:     Just use MSG_META_CLIPBOARD_CUT and MSG_META_DELETE,
+ *               sent to ourselves, to accomplish our task.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_CLIPBOARD_CUT {
+
+      /*
+       * First, copy text into clipboard
+       * Then tell ourselves to delete the text.
+       */
+    @call self::MSG_META_CLIPBOARD_COPY();
+    @call self::MSG_META_DELETE();
+} /* MSG_META_CLIPBOARD_CUT */
+
+/********************************************************************
+ *              MSG_META_DELETE
+ ********************************************************************
+ * SYNOPSIS:     Delete all the currently displayed item.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     If we've got a block of text, free it. Then send
+ *               out notification that we no longer can copy things
+ *               into the clipboard and redraw our view.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      ardeb   7/29/92         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_DELETE {
+      /*
+       * odDupText   - Pointer to duplicate text object.
+       * vmhMapBlock - VM file's map block.
+       * mhMapBlock  - VM file's map block in memory.
+       * pMapBlock   - Pointer to map block.
+       * iCurItem    - Used in for loop.
+       * cElemSize   - Used by ChunkArray.
+       * pDeadItem   - Item being removed from header.
+       */
+    optr          odDupText;
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhMapBlock;
+    SBMapBlock *  pMapBlock;
+    ItemIndexType iCurItem;
+    word          cElemSize;
+    SBItemEntry * pDeadItem;
+
+      /*
+       * Send message to delete this item.
+       * Check if we can still cut/copy.
+       */
+    pself = ObjDerefGen( oself );
+    if ( pself->SBDI_cNumItems > 0 ) {
+          /*
+           * Clear text out of text object.
+           */
+        odDupText = ConstructOptr( pself->SBDI_mhText,
+                                   OptrToChunk( @SBText ) );
+EC(     ECCheckLMemOD( odDupText ); )
+        @send odDupText::MSG_VIS_TEXT_DELETE_ALL();
+
+          /*
+           * Get block handle of the current item.
+           * Free the VM block for this item.
+           * Delete item's entry in the map block.
+           */
+EC(     ECVMCheckVMFile( pself->GDI_fileHandle ); )
+        vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC(     ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+        pMapBlock = VMLock( pself->GDI_fileHandle,
+                            vmhMapBlock, &mhMapBlock );
+EC(     ECCheckMemHandle( mhMapBlock ); )
+EC(     ECCheckBounds( pMapBlock ); )
+        pDeadItem = ChunkArrayElementToPtrHandles(
+            mhMapBlock, pMapBlock->SBMB_chaItemInfo,
+            pself->SBDI_iCurItem, &cElemSize );
+        VMFree( pself->GDI_fileHandle, pDeadItem->SBIH_vmh );
+        ChunkArrayDeleteHandle( pMapBlock->SBMB_chaItemInfo, pDeadItem );
+
+          /*
+           * Decrement the number of items left.
+           * Resize the map block. Since it will be smaller, we
+           * don't have to update the mhMapBlock and pMapBlock.
+           * Mark map block dirty.
+           */
+        pself->SBDI_cNumItems--;
+        VMDirty( mhMapBlock );
+        VMUnlock( mhMapBlock );
+
+          /*
+           * Remove curItem from dynamic list.
+           */
+        @send SBGotoItemList::MSG_GEN_DYNAMIC_LIST_REMOVE_ITEMS(
+            pself->SBDI_iCurItem, 1 );
+
+          /*
+           * Re-adjust curItem pointer.
+           * Send out notifications.
+           * Display new current item.
+           */
+        if ( 0 == pself->SBDI_cNumItems ) {
+            pself->SBDI_iCurItem = 0;
+        }
+        if ( pself->SBDI_iCurItem > ( pself->SBDI_cNumItems - 1 ) ) {
+            pself->SBDI_iCurItem = pself->SBDI_cNumItems - 1;
+        }
+        SendSelectNotify( pself->SBDI_cNumItems > 0 );
+        @send self::MSG_SB_DOCUMENT_DISPLAY_ITEM();
+    }
+} /* MSG_META_DELETE */
+
+/********************************************************************
+ *              MSG_META_CLIPBOARD_COPY
+ ********************************************************************
+ * SYNOPSIS:     Copy the current text block to the clipboard.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: The normal transfer item is replaced with our text.
+ * STRATEGY:     First, get the text from the object into a
+ *               memory block. Then call our common routine to copy
+ *               our text to the normal item. Finally, free the
+ *               memory block.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial Revision
+ *      NF      8/14/95         Added use of mem block
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_CLIPBOARD_COPY {
+      /*
+       * mhText    - Temporary block for text while copying.
+       * odDupText - Pointer to duplicated text object.
+       */
+    MemHandle mhText;
+    optr      odDupText;
+
+    /*
+     * Get the text into a memory block.
+     * Call our copy routine.
+     * Free the memory block.
+     */
+    pself = ObjDerefGen( oself );
+    odDupText = ConstructOptr( pself->SBDI_mhText, OptrToChunk( @SBText ) );
+EC( ECCheckLMemOD( odDupText ); )
+    mhText = @call odDupText::MSG_VIS_TEXT_GET_ALL_BLOCK( NullHandle );
+EC( ECCheckMemHandle( mhText ); )
+    CopyCommon( TIF_NORMAL, mhText );
+    MemFree( mhText );
+} /* MSG_META_CLIPBOARD_COPY */
+
+/********************************************************************
+ *              MSG_META_CLIPBOARD_PASTE
+ ********************************************************************
+ * SYNOPSIS:     Replace our current text with that stored in the
+ *               normal transfer item in the clipboard.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call our common routine to paste in the normal item.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_CLIPBOARD_PASTE {
+      /*
+       * odDupText  - Pointer to duplicate text object.
+       * transferID - VM file and block of item header.
+       * vmhItem    - VM block of item.
+       * mhItem     - Memory block for item header.
+       * pItem      - Pointer to item header.
+       */
+    optr                  odDupText;
+    TransferBlockID       transferID;
+    VMBlockHandle         vmhItem;
+    MemHandle             mhItem;
+    ClipboardItemHeader * pItem;
+
+    pself = ObjDerefGen( oself );
+    odDupText = ConstructOptr( pself->SBDI_mhText,
+                               OptrToChunk( @SBText ) );
+EC( ECCheckLMemOD( odDupText ); )
+    PasteCommon( TIF_NORMAL, odDupText, pself->GDI_fileHandle, &vmhItem );
+
+      /*
+       * Add the new item to the map block.
+       */
+    transferID = ClipboardGetNormalItemInfo();
+    pItem = VMLock( FileFromTransferBlockID( transferID ),
+                    BlockFromTransferBlockID( transferID ), &mhItem );
+EC( ECCheckMemHandle( mhItem ); )
+EC( ECCheckBounds( pItem ); )
+    @call self::MSG_SB_DOCUMENT_ADD_ITEM( vmhItem, pItem );
+    VMUnlock( mhItem );
+
+      /*
+       * Add new item to dynamic list.
+       * Tell ourselves to display the item.
+       */
+    @send SBGotoItemList::MSG_GEN_DYNAMIC_LIST_ADD_ITEMS(
+        pself->SBDI_iCurItem, 1 );
+    @call self::MSG_SB_DOCUMENT_DISPLAY_ITEM();
+} /* MSG_META_CLIPBOARD_PASTE */
+
+/********************************************************************
+ *      MSG_META_CLIPBOARD_NOTIFY_NORMAL_TRANSFER_ITEM_CHANGED
+ ********************************************************************
+ * SYNOPSIS:     Push out a status message for the edit controller
+ *               telling it if we can handle the current normal
+ *               transfer item.
+ * PARAMETERS:   ManufacturerID manufID
+ *               word           changeID
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: Notification is sent to the application object
+ * STRATEGY:     Call SendSelectNotify to notify Edit menu of
+ *               what we can do.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass,
+    MSG_META_CLIPBOARD_NOTIFY_NORMAL_TRANSFER_ITEM_CHANGED {
+
+      /*
+       * Tell the world whether we can handle the new normal
+       * transfer item, etc.
+       */
+    pself = ObjDerefGen( oself );
+    SendSelectNotify( pself->SBDI_cNumItems > 0 );
+} /* MSG_META_CLIPBOARD_NOTIFY_NORMAL_TRANSFER_ITEM_CHANGED */
+
+/********************************************************************
+ *              MSG_META_GAINED_TARGET_EXCL
+ ********************************************************************
+ * SYNOPSIS:     Take note that we are the target object and are
+ *               thus responsible for notifying the GenEditControl
+ *               of our status.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: Process is added to the clipboard notification list.
+ * STRATEGY:     When we are the target object, it is our responsibility
+ *               to keep any objects controlling us (in this app, the
+ *               GenEditControl object) aprised of our status by sending
+ *               notification to them whenever it changes. To do this,
+ *               we must be on the clipboard notification list, so we
+ *               can tell the controller(s) if we can paste the new
+ *               normal transfer item, when it arrives.
+ *               To the controllers, a change of target is simply a
+ *               massive state change (of every aspect of the target
+ *               object), so we send out all the notifications we're
+ *               supposed to send, during the course of our life,
+ *               whenever we gain the target.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      ardeb   7/31/92         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_GAINED_TARGET_EXCL {
+
+      /*
+       * Call superclass to get default behavior.
+       */
+    @callsuper();
+
+      /*
+       * Add ourselves to the clipboard notification list.
+       * Send our notifications.
+       */
+    ClipboardAddToNotificationList( oself );
+    pself = ObjDerefGen( oself );
+    SendSelectNotify( pself->SBDI_cNumItems > 0 );
+} /* MSG_META_GAINED_TARGET_EXCL */
+
+/********************************************************************
+ *              MSG_META_LOST_TARGET_EXCL
+ ********************************************************************
+ * SYNOPSIS:     Take note that we are no longer the target object
+ *               and thus are no longer responsible for notifying
+ *               the GenEditControl of our status.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: Process is removed from the clipboard notification
+ *               list.
+ * STRATEGY:     Since we don't have to continually update the
+ *               controller of our status, we no longer need to be
+ *               kept aprised of the state of the clipboard, so we
+ *               remove ourself from its notification list.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      ardeb   7/31/92         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_LOST_TARGET_EXCL {
+
+      /*
+       * Call superclass to get default behavior.
+       */
+    @callsuper();
+
+EC( ECCheckLMemOD( oself ); )
+    ClipboardRemoveFromNotificationList( oself );
+} /* MSG_META_LOST_TARGET_EXCL */
+
+/********************************************************************
+ *              MSG_META_START_MOVE_COPY
+ ********************************************************************
+ * SYNOPSIS:     Begin a quick-transfer of our text.
+ * PARAMETERS:   MouseReturnFlags * retVal
+ *               sword              xPosition
+ *               sword              yPosition
+ *               word               inputState
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: The CIF_QUICK transfer item is replaced with our
+ *               text, if we have any.
+ * STRATEGY:     Contact the UI to initiate the quick-transfer. It'll
+ *               let us know if there's already one in progress.
+ *
+ *               If the UI gave us the green light, use our common
+ *               routine to copy our text to the quick transfer item,
+ *               not the normal one, then (if that succeeded) tell our
+ *               view to allow the mouse to go outside the view on its
+ *               global quick-transfer mission.
+ *
+ *               Finally, tell our caller that we actually processed
+ *               the mouse event, so it needn't try and give it to
+ *               anyone else.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  4/92            Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_START_MOVE_COPY {
+      /*
+       * odDupView - Pointer to duplicated view.
+       * mhText    - Temporary block for text while copying.
+       * odDupText - Pointer to duplicated text object.
+       */
+    optr      odDupView;
+    MemHandle mhText;
+    optr      odDupText;
+
+      /*
+       * Start the UI part of the quick-transfer. We don't
+       * support quick-move, so we pass CQTF_COPY_ONLY and an
+       * initial cursor of CQTF_COPY. We request notification
+       * only for example purposes, not because we have
+       * anything serious to do that requires notification.
+       * (Mouse position + region structure pointer need
+       * only be passed if CQTF_USE_REGION.)
+       */
+    if ( ClipboardStartQuickTransfer( CQTF_COPY_ONLY | CQTF_NOTIFICATION,
+                                      CQTF_COPY, 0, 0, 0, oself ) ) {
+          /*
+           * Create and register a quick-tranfser item.
+           * Get the text into a memory block.
+           */
+        pself = ObjDerefGen( oself );
+        odDupText = ConstructOptr( pself->SBDI_mhText,
+                                   OptrToChunk( @SBText ) );
+EC(     ECCheckLMemOD( odDupText ); )
+        mhText = @call odDupText::MSG_VIS_TEXT_GET_ALL_BLOCK( NullHandle );
+EC(     ECCheckMemHandle( mhText ); )
+        if ( CopyCommon( CIF_QUICK, mhText ) ) {
+              /*
+               * Quick-transfer successfully started, tell the
+               * duplicate view to allow the mouse pointer to
+               * wander everywhere for feedback.
+               */
+            pself = ObjDerefGen( oself );
+            odDupView = ConstructOptr( pself->GDI_display,
+                                       OptrToChunk( @SBView ) );
+EC(         ECCheckLMemOD( odDupView ); )
+            @send odDupView::MSG_GEN_VIEW_ALLOW_GLOBAL_TRANSFER();
+        }
+        else {
+              /*
+               * Couldn't actually copy the data to
+               * the clipboard, so abort the quick transfer
+               * we told the UI was about to commence.
+               */
+            ClipboardAbortQuickTransfer();
+        } /* if-else */
+          /*
+           * Free the text memory block.
+           */
+        MemFree( mhText );
+    } /* if */
+
+       /*
+        * Signal that this event processed.
+        */
+    retVal->flags = MRF_PROCESSED;
+} /* MSG_META_START_MOVE_COPY */
+
+/********************************************************************
+ *              MSG_META_PTR
+ ********************************************************************
+ * SYNOPSIS:     Provide quick-transfer feedback, if necessary.
+ * PARAMETERS:   MouseReturnFlags * retVal
+ *               sword              xPosition
+ *               sword              yPosition
+ *               word               inputState
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: Mouse cursor changed to reflect whether we can
+ *               accept the transfer.
+ * STRATEGY:     If the inputState indicates the user is performing
+ *               quick-transfer and we need to see (and tell others)
+ *               whether we're willing to accept the current quick
+ *               transfer item.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  4/92            Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_PTR {
+
+      /*
+       * Check if doing quick-transfer. If not, there's nothing
+       * else we have to do.
+       */
+    if ( ( GET_UI_FUNCTIONS_ACTIVE( inputState ) & UIFA_MOVE_COPY )
+         && ClipboardGetQuickTransferStatus() ) {
+        /*
+         * Need to check the current quick-transfer item to see
+         * if it supports the CIF_TEXT format. If it does, we
+         * always like to copy, not move, the thing.
+         */
+        ClipboardSetQuickTransferFeedback( ( CheckPasteable( CIF_QUICK ) ?
+                                             CQTF_COPY :
+                                             CQTF_CLEAR ),
+                                           inputState);
+    }
+
+      /*
+       * Signal that this event processed.
+       */
+    retVal->flags = MRF_PROCESSED;
+} /* MSG_META_PTR */
+
+/********************************************************************
+ *              MSG_META_END_MOVE_COPY
+ ********************************************************************
+ * SYNOPSIS:     Paste the current quick-transfer item if it's
+ *               pasteable.
+ * PARAMETERS:   MouseReturnFlags * retVal
+ *               sword              xPosition
+ *               sword              yPosition
+ *               word               inputState
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     The user has ended his/her quick-transfer on our
+ *               humble view. Call our common paste routine to
+ *               paste in the quick transfer item, then end the
+ *               quick-transfer by calling ClipboardEndQuickTransfer,
+ *               telling it what we did.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  4/92            Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_META_END_MOVE_COPY {
+      /*
+       * odDupText  - Pointer to duplicate text object.
+       * transferID - VM file and block of item header.
+       * vmFile     - VM file of item header.
+       * vmhItem    - VM block of item.
+       * mhItem     - Mem block for item header.
+       * pItem      - Pointer to item header.
+       * retFlags   - Returned from PasteCommon.
+       */
+    optr                      odDupText;
+    TransferBlockID           transferID;
+    VMFileHandle              vmFile;
+    VMBlockHandle             vmhItem;
+    MemHandle                 mhItem;
+    ClipboardItemHeader *     pItem;
+    ClipboardQuickNotifyFlags retFlags;
+
+      /*
+       * Paste the thing, PasteCommon returns
+       * ClipboardQuickNotifyFlags to pass to
+       * ClipboardEndQuickTransfer
+       */
+    pself = ObjDerefGen( oself );
+    odDupText = ConstructOptr( pself->SBDI_mhText,
+                               OptrToChunk( @SBText ) );
+EC( ECCheckLMemOD( odDupText ); )
+    retFlags = PasteCommon( CIF_QUICK, odDupText,
+                            pself->GDI_fileHandle, &vmhItem );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhItem ); )
+    transferID = ClipboardGetQuickItemInfo();
+#if ERROR_CHECK
+    ECVMCheckVMFile( FileFromTransferBlockID( transferID ) );
+    ECVMCheckVMBlockHandle( FileFromTransferBlockID( transferID ),
+                            BlockFromTransferBlockID( transferID ) );
+#endif
+    pItem = VMLock( FileFromTransferBlockID( transferID ),
+                    BlockFromTransferBlockID( transferID ),
+                    &mhItem );
+EC( ECCheckMemHandle( mhItem ); )
+EC( ECCheckBounds( pItem ); )
+
+      /*
+       * Add the new item to the map block.
+       * Add new item to dynamic list.
+       * Signal that this event processed.
+       */
+    @call self::MSG_SB_DOCUMENT_ADD_ITEM( vmhItem, pItem );
+    VMUnlock( mhItem );
+    ClipboardEndQuickTransfer( retFlags );
+    @send SBGotoItemList::MSG_GEN_DYNAMIC_LIST_ADD_ITEMS(
+        pself->SBDI_iCurItem, 1 );
+
+    @call self::MSG_SB_DOCUMENT_DISPLAY_ITEM();
+    retVal->flags = MRF_PROCESSED;
+} /* MSG_META_END_MOVE_COPY */
+
+/********************************************************************
+ *       MSG_META_CLIPBOARD_NOTIFY_QUICK_TRANSFER_CONCLUDED
+ ********************************************************************
+ * SYNOPSIS:     Let the user know whether we were successful
+ *               in our transfer attempt.
+ * PARAMETERS:   ClipboardQuickNotifyFlags flags
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     This message is sent because we specified
+ *               CQTF_NOTIFICATION
+ *               and gave our address as the notification OD. It
+ *               comes to us when the object that received the
+ *               MSG_META_END_MOVE_COPY calls ClipboardEnd-
+ *               QuickTransfer.
+ *
+ *               There's nothing the system needs us to do here. The
+ *               quick transfer item we registered remains in the
+ *               clipboard until the next quick transfer, for example.
+ *
+ *               What we do, however, is to alert the user to how the
+ *               transfer went. If it's an error (it can't be a
+ *               move because we specified CQTF_COPY_ONLY when we
+ *               started the transfer), we beep.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  4/92            Initial Revision
+ *      NF      8/14/95         Removed the flash
+ *******************************************************************/
+@extern method SBDocumentClass,
+    MSG_META_CLIPBOARD_NOTIFY_QUICK_TRANSFER_CONCLUDED {
+
+      /*
+       * Do some simple error indication.
+       * If error, make a beep.
+       */
+    if ( !( flags & CQNF_COPY ) ) {
+        if ( flags & CQNF_NO_OPERATION ) {
+              /* Tried to drop on an object that can't receive. */
+            UserStandardSound( SST_WARNING );
+        }
+        else {
+              /* There was something else wrong. */
+            UserStandardSound( SST_ERROR );
+        }
+    }
+} /* MSG_META_CLIPBOARD_NOTIFY_QUICK_TRANSFER_CONCLUDED */
+

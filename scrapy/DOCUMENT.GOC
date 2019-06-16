@@ -1,0 +1,433 @@
+/********************************************************************
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Document/MSG_GEN_DOCUMENT Methods
+ * FILE:        document.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/8/95          Initial version
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file contains the document methods for GenDocument
+ *      class.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/vltextc.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Code for SBDocumentClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE
+ ********************************************************************
+ * SYNOPSIS:     Create an empty document.
+ * PARAMETERS:   void
+ * RETURNS:      Boolean - TRUE if error occurred.
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Create an empty map block and attach it to the
+ *               VM file.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/11/91         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE {
+      /*
+       * vmhMapBlock - VMBlockHandle of new map block.
+       * pMapBlock   - Pointer to map block.
+       * mhMapBlock  - Handle of locked map block.
+       */
+    VMBlockHandle vmhMapBlock;
+    SBMapBlock *  pMapBlock;
+    MemHandle     mhMapBlock;
+
+    @callsuper();
+
+      /*
+       * Initialize the instance data.
+       */
+    pself = ObjDerefGen( oself );
+    pself->SBDI_mhText = NullHandle;
+    pself->SBDI_cNumItems = 0;
+    pself->SBDI_iCurItem = 0;
+
+      /*
+       * Allocate a map block.
+       */
+EC( ECVMCheckVMFile( pself->GDI_fileHandle ); )
+    vmhMapBlock = VMAllocLMem( pself->GDI_fileHandle,
+        LMEM_TYPE_GENERAL, sizeof( SBMapBlock ) );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+    VMSetMapBlock( pself->GDI_fileHandle, vmhMapBlock );
+
+      /*
+       * Turn the map block into an lmem heap so
+       * we can create a chunk array inside it.
+       * Create item info table in map block using ChunkArrayCreate.
+       */
+    pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock, &mhMapBlock );
+EC( ECCheckMemHandle( mhMapBlock ); )
+EC( ECCheckBounds( pMapBlock ); )
+    pMapBlock->SBMB_chaItemInfo = ChunkArrayCreate( mhMapBlock,
+        sizeof( SBItemEntry ), 0, 0 );
+    pMapBlock = MemDeref( mhMapBlock );
+#if ERROR_CHECK
+    ECCheckBounds( pMapBlock );
+    if ( NullHandle == pMapBlock->SBMB_chaItemInfo ) {
+        FatalError( SB_ERR_CHUNK_ARRAY_CREATE_FAILED );
+    }
+    ECCheckLMemOD( ConstructOptr( mhMapBlock,
+                   pMapBlock->SBMB_chaItemInfo ) );
+#endif
+
+      /*
+       * Mark the block dirty and unlock.
+       * Return no error.
+       */
+    VMDirty( mhMapBlock );
+    VMUnlock( mhMapBlock );
+    return( FALSE );
+} /* MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     The document has been opened, and any UI required
+ *               has been created, so initialize the UI itself.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Duplicate the document resource and prepare it
+ *               for use with the scrapbook. In particular set up
+ *               the text object. Add the duplicated view to the
+ *               view controllers list. Initialize the dynamic
+ *               list object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/11/91         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT {
+      /*
+       * vmhMapBlock   - Map block handle.
+       * mhMapBlock    - Locked map block handle.
+       * pMapBlock     - Pointer to locked map block.
+       * odDupText     - Pointer to duplicate of SBText.
+       * odDupView     - Pointer to duplicated view.
+       * vself         - Pointer to VisContent instance data.
+       * fhVisTextFile - Handle of text VM file.
+       * iCurInitItem  - Used in loop to init list.
+       */
+    VMBlockHandle        vmhMapBlock;
+    MemHandle            mhMapBlock;
+    SBMapBlock *         pMapBlock;
+    optr                 odDupText;
+    optr                 odDupView;
+    VisContentInstance * vself;
+    VMFileHandle         fhVisTextFile;
+    ItemIndexType        iCurInitItem;
+
+      /*
+       * Get the number of items in the book, and set
+       * the current item as the first one.
+       */
+    pself = ObjDerefGen( oself );
+EC( ECVMCheckVMFile( pself->GDI_fileHandle ); )
+    vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+    pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock, &mhMapBlock );
+EC( ECCheckMemHandle( mhMapBlock ); )
+EC( ECCheckBounds( pMapBlock ); )
+    pself->SBDI_cNumItems = ChunkArrayGetCountHandles(
+        mhMapBlock, pMapBlock->SBMB_chaItemInfo );
+    pself->SBDI_iCurItem = 0;
+    VMUnlock( mhMapBlock );
+
+      /*
+       * Duplicate the document resource.
+       */
+    odDupText = @SBText;
+EC( ECCheckLMemOD( odDupText ); )
+    pself->SBDI_mhText = ObjDuplicateResource(
+                             OptrToHandle( odDupText ), 0, 0 );
+
+      /*
+       * Set the attributes of the content to be large.
+       * Set up geometry of content so manager is not used.
+       */
+    pself->GCI_attrs  = VCNA_LARGE_DOCUMENT_MODEL |
+                        VCNA_WINDOW_COORDINATE_MOUSE_EVENTS |
+                        VCNA_SAME_WIDTH_AS_VIEW;
+    vself = ObjDerefVis( oself );
+    vself->VCNI_attrs = VCNA_LARGE_DOCUMENT_MODEL |
+                        VCNA_WINDOW_COORDINATE_MOUSE_EVENTS |
+                        VCNA_SAME_WIDTH_AS_VIEW;
+    vself->VI_attrs    &= ~VA_MANAGED;
+    vself->VI_optFlags &= ~( VOF_GEOMETRY_INVALID |
+                             VOF_GEO_UPDATE_PATH );
+    vself->VI_geoAttrs |= VCGA_CUSTOM_MANAGE_CHILDREN;
+
+      /*
+       * Set up VisText object for the large document model.
+       */
+    odDupText = ConstructOptr( pself->SBDI_mhText,
+                               OptrToChunk( odDupText ) );
+EC( ECCheckLMemOD( odDupText ); )
+    fhVisTextFile = ClipboardGetClipboardFile();
+EC( ECVMCheckVMFile( fhVisTextFile ); )
+    @send odDupText::MSG_VIS_TEXT_SET_VM_FILE( fhVisTextFile );
+    @send odDupText::MSG_VIS_LARGE_TEXT_CREATE_DATA_STRUCTURES();
+    @send odDupText::MSG_VIS_NOTIFY_GEOMETRY_VALID();
+
+    @callsuper();
+
+      /*
+       * Add text object as a child of document.
+       * Have text object grab the target and focus.
+       * Add text to it.
+       * Add the duplicated view to the controlled views list.
+       */
+    @call self::MSG_VIS_ADD_CHILD( odDupText, CCO_FIRST );
+    @call self::MSG_META_GRAB_TARGET_EXCL();
+    pself = ObjDerefGen( oself );
+    odDupView = ConstructOptr( pself->GDI_display, OptrToChunk( @SBView ) );
+EC( ECCheckLMemOD( odDupView ); )
+    @call application::MSG_META_GCN_LIST_ADD(
+                           odDupView,
+                           GAGCNLT_CONTROLLED_GEN_VIEW_OBJECTS,
+                           MANUFACTURER_ID_GEOWORKS );
+
+      /*
+       * Initialize dynamic list.
+       * Display first item in document.
+       */
+    @send SBGotoItemList::MSG_GEN_DYNAMIC_LIST_INITIALIZE(
+        pself->SBDI_cNumItems );
+    @send self::MSG_SB_DOCUMENT_DISPLAY_ITEM();
+} /* MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     This message is sent to the GenDocument object when
+ *               the document is about to be closed.  It allows the
+ *               GenDocument to detach all the UI objects it attached
+ *               earlier before closing.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Remove the text object from the document and free
+ *               all of its storage. Reset the dynamic list gadget.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/11/91         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT {
+      /*
+       * odDupText - Pointer to duplicate of SBText.
+       * odDupView - Pointer to duplicated view.
+       */
+    optr odDupText;
+    optr odDupView;
+
+      /*
+       * Remove text object from content.
+       * Remove the duplicated view from the controlled views list.
+       * Set text handle null so save and revert work okay.
+       * Reset the dynamic list.
+       */
+    pself = ObjDerefGen( oself );
+    if ( pself->SBDI_mhText != NullHandle ) {
+        odDupText = ConstructOptr( pself->SBDI_mhText,
+                                   OptrToChunk( @SBText ) );
+EC(     ECCheckLMemOD( odDupText ); )
+        @send odDupText::MSG_VIS_REMOVE( VUM_DELAYED_VIA_APP_QUEUE );
+
+        @callsuper();
+
+        @send odDupText::MSG_VIS_TEXT_FREE_ALL_STORAGE( TRUE );
+        @send odDupText::MSG_VIS_TEXT_SET_VM_FILE( NullHandle );
+        @send odDupText::MSG_VIS_DESTROY( VUM_DELAYED_VIA_APP_QUEUE );
+        pself = ObjDerefGen( oself );
+        odDupView = ConstructOptr( pself->GDI_display, OptrToChunk( @SBView ) );
+EC(     ECCheckLMemOD( odDupView ); )
+        @call application::MSG_META_GCN_LIST_REMOVE(
+            odDupView, GAGCNLT_CONTROLLED_GEN_VIEW_OBJECTS,
+            MANUFACTURER_ID_GEOWORKS );
+        pself->SBDI_mhText = NullHandle;
+        pself->SBDI_cNumItems = 0;
+        pself->SBDI_iCurItem = 0;
+        @send SBGotoItemList::MSG_GEN_DYNAMIC_LIST_INITIALIZE( 0 );
+    }
+    else {
+        @callsuper();
+    }
+} /* MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_ATTACH_FAILED
+ ********************************************************************
+ * SYNOPSIS:     This message is sent to the GenDocument object when
+ *               the document could not be attached.  It allows the
+ *               GenDocument to destroy all the UI objects it attached
+ *               earlier.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Free all the text's storage and destroy it. Also
+ *               initialize the dynamic list gadget.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/11/91         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_GEN_DOCUMENT_ATTACH_FAILED {
+      /*
+       * odDupText - Pointer to duplicate of SBText.
+       */
+    optr odDupText;
+
+    @callsuper();
+
+      /*
+       * Remove text object from content.
+       * Set text handle null so save and revert work okay.
+       * Reset the dynamic list.
+       */
+    pself = ObjDerefGen( oself );
+    if ( NullHandle != pself->SBDI_mhText ) {
+        odDupText = ConstructOptr( pself->SBDI_mhText,
+                                OptrToChunk( @SBText ) );
+EC(     ECCheckLMemOD( odDupText ); )
+        @send odDupText::MSG_VIS_TEXT_FREE_ALL_STORAGE( TRUE );
+        @send odDupText::MSG_VIS_TEXT_SET_VM_FILE( NullHandle );
+        @call odDupText::MSG_VIS_DESTROY( VUM_DELAYED_VIA_APP_QUEUE );
+        pself->SBDI_mhText = NullHandle;
+        pself->SBDI_cNumItems = 0;
+        pself->SBDI_iCurItem = 0;
+        @send SBGotoItemList::MSG_GEN_DYNAMIC_LIST_INITIALIZE( 0 );
+    }
+} /* MSG_GEN_DOCUMENT_ATTACH_FAILED */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_OPEN
+ ********************************************************************
+ * SYNOPSIS:     This message is sent to the GenDocument object when
+ *               the document is being opened.  It allows the
+ *               GenDocument to load the document from disk.
+ * PARAMETERS:   word *                 fileOrError
+ *               DocumentCommonParams * params
+ * RETURNS:      Boolean - TRUE if error occurred
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Make sure nothing went wrong with open.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/11/91         Initial Revision
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_GEN_DOCUMENT_OPEN {
+
+      /*
+       * Check if error occurred during open.
+       * If so, cancel the open. Return error status.
+       * (Don't try to do MSG_GEN_DESTROY, that gives an error.)
+       */
+    if ( @callsuper() ) {
+        @send self::MSG_GEN_REMOVE( VUM_NOW, 0 );
+        return( TRUE );
+    }
+    else {
+        return( FALSE );
+    }
+} /* MSG_GEN_DOCUMENT_OPEN */
+
+
+/********************************************************************
+ *              Some of the Code for SBTextClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_VIS_TEXT_FREE_ALL_STORAGE
+ ********************************************************************
+ * SYNOPSIS:     Free the space we allocated eariler.
+ * CALLED BY:    MSG_GEN_DOCUMENT_DESTROY_UI_FOR_DOCUMENT
+ * PARAMETERS:   Boolean removeElementArrays
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Set the chunk header to default values, set the
+ *               flags for the text object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/16/95         Initial version
+ *******************************************************************/
+@extern method SBTextClass, MSG_VIS_TEXT_FREE_ALL_STORAGE {
+      /*
+       * pChkAryHdr    - Pointer to chunk array header.
+       * vself         - Pointer to VisText instance data.
+       * odRegionArray - Pointer to text object.
+       */
+    ChunkArrayHeader * pChkAryHdr;
+    VisTextInstance  * vself;
+    optr               odRegionArray;
+
+    @callsuper();
+
+      /*
+       * Free the extra space that VisLargeText used.
+       */
+    odRegionArray = ConstructOptr( OptrToHandle( oself ),
+                                   OptrToChunk( @SBTextRegionArray ) );
+EC( ECCheckLMemOD( odRegionArray ); )
+EC( ECCheckMemHandle( OptrToHandle( oself ) ); )
+    MemLock( OptrToHandle( oself ) );
+    if ( LMemReAlloc( odRegionArray, sizeof( ChunkArrayHeader ) ) ) {
+          /* Error */
+        ErrorMessage( @acrBadLMemErrMsg );
+    }
+    MemUnlock( OptrToHandle( oself ) );
+
+      /*
+       * Reset the chunk header to default values.
+       */
+    pChkAryHdr = LMemDeref( odRegionArray );
+EC( ECCheckBounds( pChkAryHdr ); )
+    pChkAryHdr->CAH_count       = 0;
+    pChkAryHdr->CAH_elementSize = sizeof( VisLargeTextRegionArrayElement );
+    pChkAryHdr->CAH_curOffset   = 0;
+    pChkAryHdr->CAH_offset      = sizeof( ChunkArrayHeader );
+
+      /*
+       * Set text object to small model and invalidate it visually.
+       */
+    vself = ObjDerefVis( oself );
+    vself->VTI_storageFlags &= ~VTSF_LARGE;
+    vself->VI_optFlags      |= VOF_GEOMETRY_INVALID;
+} /* MSG_VIS_TEXT_FREE_ALL_STORAGE */
+

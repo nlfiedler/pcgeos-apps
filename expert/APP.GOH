@@ -1,0 +1,97 @@
+/********************************************************************
+ *
+ * PROJECT:     Expert Mode
+ * MODULE:      Application Header File
+ * FILE:        app.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *
+ * DESCRIPTION:
+ *      This contains the constants, structures, and classes for
+ *      the ExpertMode program.
+ *
+ *******************************************************************/
+
+  /*
+   * Turn on platform specific code.
+   * Search files for platform name for other code
+   * that couldn't be conditionally excluded.
+   */
+@define OMNIGO
+#define OMNIGO
+/*
+@define ZOOMER
+#define ZOOMER
+@define DESKTOP
+#define DESKTOP
+*/
+
+/********************************************************************
+ *              Constants
+ *******************************************************************/
+      /* Interface level */
+    #define EM_UIIL_INTRO 0
+    #define EM_UIIL_BEGIN 1
+    #define EM_UIIL_INTER 2
+    #define EM_UIIL_ADV   3
+    #define EM_UIIL_GURU  4
+
+      /* Launch level */
+    #define EM_UILL_INTRO 0
+    #define EM_UILL_BEGIN 1
+    #define EM_UILL_INTER 2
+    #define EM_UILL_ADV   3
+
+      /* docControl level */
+    #define EM_UIDC_NO_DIRS  0
+    #define EM_UIDC_SIMPLE   1
+    #define EM_UIDC_ADVANCED 2
+
+      /* docControl Options */
+    #define EM_DCO_BYPASS_BIG_DIALOG  0x8000
+    #define EM_DCO_TRANSPARENT_DOC    0x4000
+    #define EM_DCO_HAVE_FILE_OPEN     0x2000
+    #define EM_DCO_FS_CANNOT_CHANGE   0x1000
+    #define EM_DCO_NAVIGATE_ABOVE_DOC 0x0800
+    #define EM_DCO_NO_OVER_FULL       0x0400
+    #define EM_DCO_MOVE_OTHER_TO_FILE 0x0200
+    #define EM_DCO_NO_OPEN_DEFAULT    0x0100
+    #define EM_DCO_NO_NOTES_IN_OPEN   0x0080
+    #define EM_DCO_NO_READ_ONLY       0x0040
+
+      /* expressMenuControl options */
+    #define EM_EMCO_NO_SUB_MENUS      0x8000
+    #define EM_EMCO_OTHER_SUB_MENU    0x4000
+    #define EM_EMCO_RUNNING_SUB_MENU  0x2000
+    #define EM_EMCO_RUN_SUB_MENU      0x1000
+    #define EM_EMCO_FLOATING_KEYBOARD 0x0800
+
+      /* Extra options */
+    #define EM_EO_RESET_AFTER_CRASH    0x8000
+    #define EM_EO_REBOOT_ON_RESET      0x4000
+    #define EM_EO_BLINKING_CURSOR      0x2000
+    #define EM_EO_CLICK_TO_TYPE        0x1000
+    #define EM_EO_SELECT_DISPLAYS_MENU 0x0800
+    #define EM_EO_SELECT_RAISES        0x0400
+    #define EM_EO_AUTO_CENTER          0x0200
+    #define EM_EO_HELP_EDITOR          0x0100
+
+/********************************************************************
+ *              Class Definitions
+ *******************************************************************/
+    @class EMProcessClass, GenProcessClass;
+      /* Save the settings to the .INI file. */
+    @message void MSG_EM_PROCESS_SAVE_SETTINGS();
+      /* Set the Express menu options. */
+    @message (GEN_BOOLEAN_GROUP_APPLY_MSG)
+                 MSG_EM_PROCESS_SET_EXPRESS_OPTIONS;
+      /* Set the Express menu control options. */
+    @message (GEN_BOOLEAN_GROUP_APPLY_MSG)
+                 MSG_EM_PROCESS_SET_EM_CONTROL_OPTIONS;
+    @endc;
+

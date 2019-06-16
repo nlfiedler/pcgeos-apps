@@ -1,0 +1,53 @@
+/********************************************************************
+ *
+ * PROJECT:     Alarm Clock
+ * MODULE:      Global Header File
+ * FILE:        global.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *
+ * DESCRIPTION:
+ *      This contains all the global variables, object declaractions,
+ *      and routine declarations.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+      /*
+       * ACCurTimeHandle_g,  - Used to set the current time
+       * ACCurTimeTimerID_g    update timer.
+       * ACRTCMeventToken_g, - Used in setting the RTCM event
+       * ACRTCMeventID_g       for the alarm.
+       * ACSaveCharacters_g  - Flag indicating to save characters
+       *                       received by app.
+       * ACLastCharacter_g   - Last character pressed while alarm
+       *                       was going off.
+       */
+    extern TimerHandle  ACCurTimeHandle_g;
+    extern word         ACCurTimeTimerID_g;
+    extern unsigned int ACRTCMeventToken_g;
+    extern unsigned int ACRTCMeventID_g;
+    extern Boolean      ACSaveCharacters_g;
+    extern char         ACLastCharacter_g;
+
+/********************************************************************
+ *              Object Declarations
+ *******************************************************************/
+    @extern object @ACApp;
+    @extern object @ACTimeText;
+    @extern object @ACAlarmTimeInput;
+    @extern object @ACAlarmSetItemGroup;
+    @extern object @ACAlarmOnOffBooleanGroup;
+    @extern object @ACMessageText;
+
+/********************************************************************
+ *              Function Prototypes
+ *******************************************************************/
+

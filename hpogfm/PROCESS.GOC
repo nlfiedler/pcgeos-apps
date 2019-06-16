@@ -1,0 +1,1244 @@
+/********************************************************************
+ *
+ * PROJECT:     Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:      Process Object Methods
+ * FILE:        process.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *
+ * DESCRIPTION:
+ *      These are the function definitions and method definitions
+ *      for the process object. These usually call functions in the
+ *      FILE.GOC file to do the actual work.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Internal/Jedi/jtable.goh>
+    #include <initfile.h>
+    #include <Ansi/string.h> /* strcmp */
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              ProcDeleteItems
+ ********************************************************************
+ * SYNOPSIS:     Program wants to delete all the selected items.
+ *               Everything has been checked up to this point.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Do the usual processing loop: Run through the
+ *               array of items, deleting any that are selected.
+ *               Report any errors as they are found.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/19/96         Initial version
+ *******************************************************************/
+void
+ProcDeleteItems( void )
+{
+      /*
+       * bError     - Signals that an error occurred in one of
+       *              the files being deleted.
+       * cDirItems  - Number of items in directory.
+       * iCurItem   - Current item being processed.
+       * acrNewName - Name of item after renaming.
+       * pItem      - Pointer to item in array.
+       * cElemSize  - Size of element in array.
+       */
+    Boolean      bError;
+    word         cDirItems;
+    word         iCurItem;
+    FileLongName acrNewName;
+    ItemType *   pItem;
+    word         cElemSize;
+
+       /*
+        * While there are items to delete and the
+        * user hasn't cancelled do the deleting.
+        */
+    MemLock( OptrToHandle( @FMItems ) );
+    cDirItems = ChunkArrayGetCount( @FMItems );
+    iCurItem = 0;
+    while ( ( iCurItem < cDirItems ) &&
+            ( FALSE == bCancelProcess_g ) ) {
+        pItem = ChunkArrayElementToPtr( @FMItems, iCurItem, &cElemSize );
+EC(     ECCheckBounds( pItem ); )
+          /*
+           * If the item is selected, then do either
+           * a DeleteDirectory or a FileDelete. If
+           * there was an error, report it to the user.
+           */
+        if ( pItem->IT_flags & IF_SELECTED ) {
+            if ( pItem->IT_flags & IF_DIRECTORY ) {
+                bError = DeleteDirectory( pItem->IT_name );
+            }
+            else {
+                bError = FileDelete( pItem->IT_name );
+            }
+            if ( bError ) {
+                ErrorMessage( @acrDeleteErrMsg, pItem->IT_name,
+                              (char*)0 );
+            }
+        } /* if IF_SELECTED */
+        iCurItem++;
+    } /* while */
+    MemUnlock( OptrToHandle( @FMItems ) );
+} /* ProcDeleteItems */
+
+  /* Here to overcome circular dependency of routies. */
+void ProcMoveCopyItems( MemHandle  itemList_p,
+                        word       numItems_p,
+                        char *     sourcePath_p,
+                        DiskHandle sourceDisk_p,
+                        char *     destPath_p,
+                        DiskHandle destDisk_p,
+                        Boolean    moving_p );
+
+/********************************************************************
+ *              ProcMoveCopyDir
+ ********************************************************************
+ * SYNOPSIS:     Move or copy a directory.
+ * CALLED BY:    ProcMoveCopyItem
+ * SIDE EFFECTS: none
+ * STRATEGY:     Create the destination directory. Then use FileEnum
+ *               to build a list of the items in the source and
+ *               call ProcMoveCopyItems. If moving, make sure to
+ *               delete the container directory.
+ * NOTE:         Disk is checked for writability before this
+ *               function is called.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+ProcMoveCopyDir( ItemType * item_p,
+                 char *     sourcePath_p,
+                 DiskHandle sourceDisk_p,
+                 char *     destPath_p,
+                 DiskHandle destDisk_p,
+                 Boolean    moving_p )
+  /*
+   * item_p       - Item to move or copy (in).
+   * sourcePath_p - Source directory (in).
+   * sourceDisk_p - Source disk (in).
+   * destPath_p   - Destination directory (in).
+   * destDisk_p   - Destination disk (in).
+   * moving_p     - TRUE to use FileMove (in).
+   */
+{
+      /*
+       * FE_params,
+       * FE_mhBuffer,
+       * FE_cExtraFound  - FileEnum parameters.
+       * cDirItems,
+       * paDirItems      - Items in directory.
+       * iCurItem        - Used to create items.
+       * mhClipItems,
+       * pClipItems      - Pointer to the clipboard block.
+       * mhSource        - Path with new directory added on.
+       * mhDest          -
+       * pacrNewSrcPath  -
+       * pacrNewDestPath -
+       */
+    FileEnumParams  FE_params;
+    MemHandle       FE_mhBuffer;
+    word            FE_cExtraFound;
+    word            cDirItems;
+    FENameAndAttr * paDirItems;
+    word            iCurItem;
+    MemHandle       mhClipItems;
+    ItemType *      pClipItems;
+    MemHandle       mhSource;
+    MemHandle       mhDest;
+    char *          pacrNewSrcPath;
+    char *          pacrNewDestPath;
+
+      /*
+       * Create destination directory.
+       * Put all items in source directory
+       *  in a list and call ProcMoveCopyItems.
+       */
+EC( ECCheckBounds( item_p ); )
+    if ( FileExists( item_p->IT_name ) ) {
+        if ( DeleteDirectory( item_p->IT_name ) ) {
+            ErrorMessage( @acrDeleteDir1ErrMsg, (char*)0, (char*)0 );
+        }
+    }
+    if ( FileCreateDir( item_p->IT_name ) ) {
+        ErrorMessage( @acrCreateDir2ErrMsg, (char*)0, (char*)0 );
+    }
+    else {
+          /*
+           * Build the new source and destination paths.
+           * Set to the new source directory.
+           */
+        mhSource = MemAlloc( FM_PATH_BUFFER_SIZE, 0, HAF_ZERO_INIT );
+EC(     ECCheckMemHandle( mhSource ); )
+        mhDest = MemAlloc( FM_PATH_BUFFER_SIZE, 0, HAF_ZERO_INIT );
+EC(     ECCheckMemHandle( mhDest ); )
+        pacrNewSrcPath = (char*)MemLock( mhSource );
+EC(     ECCheckBounds( pacrNewSrcPath ); )
+        pacrNewDestPath = (char*)MemLock( mhDest );
+EC(     ECCheckBounds( pacrNewDestPath ); )
+EC(     ECCheckBounds( sourcePath_p ); )
+EC(     ECCheckBounds( destPath_p ); )
+        BuildNewPath( pacrNewSrcPath, sourcePath_p, item_p->IT_name );
+        BuildNewPath( pacrNewDestPath, destPath_p, item_p->IT_name );
+        FileSetCurrentPath( sourceDisk_p, pacrNewSrcPath );
+
+          /*
+           * Get list of all files and folders.
+           *   Prepare parameters for FileEnum.
+           *   FILE_ENUM_ALL_FILE_TYPES gets directories too.
+           */
+        FE_params.FEP_searchFlags = FILE_ENUM_ALL_FILE_TYPES;
+        FE_params.FEP_returnAttrs = (void*)FESRT_NAME_AND_ATTR;
+        FE_params.FEP_returnSize = sizeof( FENameAndAttr );
+        FE_params.FEP_matchAttrs = 0;
+        FE_params.FEP_bufSize = FE_BUFSIZE_UNLIMITED;
+        FE_params.FEP_skipCount = 0;
+        FE_params.FEP_callback = 0;
+        FE_params.FEP_callbackAttrs = 0;
+        FE_params.FEP_cbData1 = 0;
+        FE_params.FEP_cbData2 = 0;
+        FE_params.FEP_headerSize = 0;
+        FE_mhBuffer = NullHandle;
+        FE_cExtraFound = 0;
+        cDirItems = FileEnum( &FE_params, &FE_mhBuffer, &FE_cExtraFound );
+        if ( cDirItems ) {
+              /*
+               * Read the file entries and create item entries
+               * in the list of items for ProcMoveCopyItems to process.
+               */
+EC(         ECCheckMemHandle( FE_mhBuffer ); )
+            paDirItems = MemLock( FE_mhBuffer );
+EC(         ECCheckBounds( paDirItems ); )
+            mhClipItems = MemAlloc(
+                ( cDirItems * sizeof ( ItemType ) ), 0, 0 );
+EC(         ECCheckMemHandle( mhClipItems ); )
+            pClipItems = MemLock( mhClipItems );
+EC(         ECCheckBounds( pClipItems ); )
+            for ( iCurItem = 0; iCurItem < cDirItems; iCurItem++ ) {
+                strcpy( pClipItems[iCurItem].IT_name,
+                        paDirItems[iCurItem].FENAA_name );
+                pClipItems[iCurItem].IT_flags = 0;
+                if ( paDirItems[iCurItem].FENAA_attr & FA_SUBDIR ) {
+                    pClipItems[iCurItem].IT_flags |= IF_DIRECTORY;
+                }
+            }
+            MemFree( FE_mhBuffer );
+
+              /*
+               * Call ProcMoveCopyItems on the list.
+               * Free the block.
+               * If we're moving, delete the directory.
+               */
+            ProcMoveCopyItems( mhClipItems, cDirItems,
+                               pacrNewSrcPath, sourceDisk_p,
+                               pacrNewDestPath, destDisk_p, moving_p );
+            MemFree( mhClipItems );
+            if ( moving_p ) {
+                FileSetCurrentPath( sourceDisk_p, sourcePath_p );
+                if ( FileDeleteDir( item_p->IT_name ) ) {
+                    ErrorMessage( @acrDeleteDir2ErrMsg, (char*)0,
+                                  (char*)0 );
+                }
+            }
+        }
+    }
+    MemFree( mhSource );
+    MemFree( mhDest );
+} /* ProcMoveCopyDir */
+
+/********************************************************************
+ *              ProcMoveCopyItem
+ ********************************************************************
+ * SYNOPSIS:     Move or copy a single item, either a file or
+ *               directory.
+ * CALLED BY:    ProcMoveCopyItems
+ * SIDE EFFECTS: none
+ * STRATEGY:     If directory, call ProcMoveCopyDir. If file, either
+ *               call FileMove or FileCopy.
+ * NOTE:         Disk is checked for writability before this
+ *               function is called.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+ProcMoveCopyItem( ItemType * item_p,
+                  char *     sourcePath_p,
+                  DiskHandle sourceDisk_p,
+                  char *     destPath_p,
+                  DiskHandle destDisk_p,
+                  Boolean    moving_p )
+  /*
+   * item_p       - Item to move or copy (in).
+   * sourcePath_p - Source directory (in).
+   * sourceDisk_p - Source disk (in).
+   * destPath_p   - Destination directory (in).
+   * destDisk_p   - Destination disk (in).
+   * moving_p     - TRUE to use FileMove (in).
+   */
+{
+      /*
+       * mhSource   - Full path and file name.
+       * mhDest     -
+       * sourceFile -
+       * destFile   -
+       */
+    MemHandle mhSource;
+    MemHandle mhDest;
+    char *    sourceFile;
+    char *    destFile;
+
+      /*
+       * See what item is (either file or directory).
+       * If directory, call ProcMoveCopyDir.
+       * If file, move or copy it based on moving_p.
+       */
+    if ( item_p->IT_flags & IF_DIRECTORY ) {
+        ProcMoveCopyDir( item_p, sourcePath_p, sourceDisk_p,
+                         destPath_p, destDisk_p, moving_p );
+    }
+    else {
+          /*
+           * Allocate space for path names.
+           * Create source and destination paths.
+           * Call FileMove or FileCopy.
+           * Free the path blocks.
+           */
+        mhSource = MemAlloc( FM_PATH_BUFFER_SIZE, 0, HAF_ZERO_INIT );
+EC(     ECCheckMemHandle( mhSource ); )
+        mhDest = MemAlloc( FM_PATH_BUFFER_SIZE, 0, HAF_ZERO_INIT );
+EC(     ECCheckMemHandle( mhDest ); )
+        sourceFile = (char*)MemLock( mhSource );
+EC(     ECCheckBounds( sourceFile ); )
+        destFile = (char*)MemLock( mhDest );
+EC(     ECCheckBounds( destFile ); )
+        BuildNewPath( sourceFile, sourcePath_p, item_p->IT_name );
+        BuildNewPath( destFile, destPath_p, item_p->IT_name );
+        if ( moving_p ) {
+            if ( FileMove( sourceFile, destFile, sourceDisk_p,
+                           destDisk_p ) ) {
+                ErrorMessage( @acrMoveCopyFileErrMsg, (char*)0, (char*)0 );
+            }
+        }
+        else {
+            if ( FileCopy( sourceFile, destFile, sourceDisk_p,
+                           destDisk_p ) ) {
+                ErrorMessage( @acrMoveCopyFileErrMsg, (char*)0, (char*)0 );
+            }
+        }
+        MemFree( mhSource );
+        MemFree( mhDest );
+    }
+} /* ProcMoveCopyItem */
+
+/********************************************************************
+ *              ProcMoveCopyItems
+ ********************************************************************
+ * SYNOPSIS:     Copies the items in the list from the source
+ *               to the destination.
+ * CALLED BY:    MSG_FMP_PASTE_ITEMS,
+ *               MSG_FMP_PASTE_ORIG_ITEMS
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check if destination is writable. If moving, check
+ *               that source is erasable. Then start moving and
+ *               copying the items.
+ * NOTE:         This function checks the disks for writability.
+ *               The caller must call HideBusyBox.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+ProcMoveCopyItems( MemHandle  itemList_p,
+                   word       numItems_p,
+                   char *     sourcePath_p,
+                   DiskHandle sourceDisk_p,
+                   char *     destPath_p,
+                   DiskHandle destDisk_p,
+                   Boolean    moving_p )
+  /*
+   * itemList_p   - List of items to move/copy (in).
+   *                This is in the ItemName/Info struct
+   *                format.
+   * numItems_p   - Number of items in list (in).
+   * sourcePath_p - Source directory (in).
+   * sourceDisk_p - Source disk (in).
+   * destPath_p   - Destination directory (in).
+   * destDisk_p   - Destination disk (in).
+   * moving_p     - TRUE to delete source items (in).
+   */
+{
+      /*
+       * iCurItem   - Current item being moved/copied.
+       * replacing  - Indicates if we're replacing destination
+       *              item with source item.
+       * list       - Pointer to list of items.
+       * fileExists - TRUE if file is in destination.
+       */
+    word               iCurItem;
+    InteractionCommand replacing;
+    ItemType *         list;
+    Boolean            fileExists;
+
+      /*
+       * Check that source and destination are different.
+       */
+    if ( ( sourceDisk_p == destDisk_p ) &&
+         ( 0 == strcmp( sourcePath_p, destPath_p ) ) ) {
+        ErrorMessage( @acrCopy2ErrMsg, (char*)0, (char*)0 );
+        return;
+    }
+
+      /*
+       * Check if drives are read-only or not.
+       * Can't copy to a read-only drive, and
+       * can't move from a read-only drive.
+       */
+    if ( FALSE == TestDiskWritable( destDisk_p ) ) {
+        ErrorMessage( @acrCopy3ErrMsg, (char*)0, (char*)0 );
+        return;
+    }
+    if ( ( moving_p ) && ( FALSE == TestDiskWritable( sourceDisk_p ) ) ) {
+        ErrorMessage( @acrMove3ErrMsg, (char*)0, (char*)0 );
+        return;
+    }
+
+      /*
+       * Set the flag indicating whether we are to replace
+       * the files in the destination with those in the
+       * source or not.
+       * Lock the clipboard.
+       * Show the appropriate processing dialog.
+       */
+    replacing = IC_NO;
+    iCurItem = 0;
+    list = (ItemType*)MemLock( itemList_p );
+    if ( moving_p ) {
+        ShowBusyBox( "Moving files..." );
+    }
+    else {
+        ShowBusyBox( "Copying files..." );
+    }
+
+      /*
+       * While there are items to process:
+       *   Open destination
+       *   Check if item exists
+       *   If yes, and we're not replacing,
+       *     ask user to replace.
+       *   Else, move or copy item.
+       */
+    while ( ( iCurItem   <  numItems_p       ) &&
+            ( IC_DISMISS != replacing        ) &&
+            ( IC_NULL    != replacing        ) &&
+            ( FALSE      == bCancelProcess_g ) ) {
+        FileSetCurrentPath( destDisk_p, destPath_p );
+        fileExists = FileExists( list[iCurItem].IT_name );
+        if ( fileExists && ( IC_YES != replacing ) ) {
+            @send FMReplaceText2::MSG_VIS_TEXT_REPLACE_ALL_PTR(
+                list[iCurItem].IT_name, 0 );
+            replacing = UserDoDialog( @FMReplaceBox );
+        }
+        if ( ( !fileExists         ) ||
+             ( IC_OK  == replacing ) ||
+             ( IC_YES == replacing ) ) {
+            ProcMoveCopyItem( &(list[iCurItem]), sourcePath_p,
+                sourceDisk_p, destPath_p, destDisk_p, moving_p );
+        }
+        iCurItem++;
+    } /* while iCurItem */
+
+      /*
+       * The processing dialog will be closed by the caller.
+       * Unlock the clipboard.
+       */
+    MemUnlock( itemList_p );
+} /* ProcMoveCopyItems */
+
+/********************************************************************
+ *              Code for FMProcessClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_OPEN_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Start the application by getting some information
+ *               about the current disk. Then display the items in
+ *               the current directory.
+ * PARAMETERS:   AppAttachFlags attachFlags
+ *               MemHandle      launchBlock
+ *               MemHandle      extraState
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call the superclass to start the application.
+ *               Then call DisplayCurrentPath and DisplaySpaceFree
+ *               to get info on the volume. Then call
+ *               DisplayDirectory to list the items in the current
+ *               directory. End by returning and awaiting user input.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION {
+
+      /*
+       * Initialize the clipboard.
+       * Get default behavior (start application).
+       */
+    mhClipItems_g = NullHandle;
+    cClipItems_g = 0;
+    @callsuper();
+
+      /*
+       * Display current path and free space.
+       * Display files in current directory.
+       * Find which drives are available.
+       * Add us to the GCN list for file system changes.
+       */
+    DisplayCurrentPath();
+    DisplaySpaceFree();
+    MakeDriveList();
+    DisplayDirectory();
+} /* MSG_GEN_PROCESS_OPEN_APPLICATION */
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_CLOSE_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Close the application.
+ * PARAMETERS:   void
+ * RETURNS:      MemHandle - Extra state block.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Remove the process from the file system GCN lists.
+ *               Call superclass and return the mem handle.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_GEN_PROCESS_CLOSE_APPLICATION {
+
+      /*
+       * Add us to the GCN list for file system changes.
+       * Free the clipboard if it was allocated.
+       * Get default behavior (close application).
+       */
+    if ( NullHandle != mhClipItems_g ) {
+EC(     ECCheckMemHandle( mhClipItems_g ); )
+        MemFree( mhClipItems_g );
+    }
+    return( @callsuper() );
+} /* MSG_GEN_PROCESS_CLOSE_APPLICATION */
+
+/********************************************************************
+ *              MSG_FMP_GO_UP_ONE
+ ********************************************************************
+ * SYNOPSIS:     Change to the parent directory of the current
+ *               directory.
+ * CALLED BY:    FMUpOneTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Change current path to parent directory. Update
+ *               the display.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_GO_UP_ONE {
+
+    ParentDirectory();
+    DisplayCurrentPath();
+    DisplayDirectory();
+} /* MSG_FMP_GO_UP_ONE */
+
+/********************************************************************
+ *              MSG_FMP_GOTO_WORLD
+ ********************************************************************
+ * SYNOPSIS:     Change to the WORLD directory.
+ * CALLED BY:    FMWorldTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Change current path to WORLD. Update the
+ *               display and selected item in drive list.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_GOTO_WORLD {
+
+    FileSetCurrentPath( SP_APPLICATION, "" );
+    DisplayCurrentPath();
+    DisplaySpaceFree();
+    DisplayDirectory();
+} /* MSG_FMP_GOTO_WORLD */
+
+/********************************************************************
+ *              MSG_FMP_GOTO_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     Change to the DOCUMENT directory.
+ * CALLED BY:    FMDocumentTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Change current path to DOCUMENT. Update the
+ *               display and selected item in drive list.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_GOTO_DOCUMENT {
+
+    FileSetCurrentPath( SP_DOCUMENT, "" );
+    DisplayCurrentPath();
+    DisplaySpaceFree();
+    DisplayDirectory();
+} /* MSG_FMP_GOTO_DOCUMENT */
+
+/********************************************************************
+ *              MSG_FMP_OPEN_DIRECTORY
+ ********************************************************************
+ * SYNOPSIS:     Open the passed directory.
+ * CALLED BY:    FMOpenDirTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Find out if any items are selected. If so, then
+ *               get the first one and call OpenDirectory with the
+ *               name of the item selected. Display the current
+ *               path and directory when done.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_OPEN_DIRECTORY {
+      /*
+       * iFirst    - Index to first selected item.
+       * pItem     - Pointer to first selected item.
+       * cElemSize - Used to get pItem.
+       */
+    word       iFirst;
+    ItemType * pItem;
+    word       cElemSize;
+
+    iFirst = GetFirstSelectedItem();
+    if ( 0xFFFF != iFirst ) {
+        MemLock( OptrToHandle( @FMItems ) );
+        pItem = ChunkArrayElementToPtr( @FMItems, iFirst, &cElemSize );
+EC(     ECCheckBounds( pItem ); )
+        OpenDirectory( pItem->IT_name );
+        MemUnlock( OptrToHandle( @FMItems ) );
+        DisplayCurrentPath();
+        DisplayDirectory();
+    }
+} /* MSG_FMP_OPEN_DIRECTORY */
+
+/********************************************************************
+ *              MSG_FMP_CREATE_FOLDER
+ ********************************************************************
+ * SYNOPSIS:     Create a new folder in the current directory,
+ *               given the name in the text object.
+ * CALLED BY:    FMCreateDirText2,
+ *               FMCreateDirOkayTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the name of the new folder from the text object.
+ *               Check if it's okay, then create a new directory
+ *               with that name.
+ * NOTE:         This function checks disk for writability.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_CREATE_FOLDER {
+      /*
+       * acrNewName     - New folder name.
+       * cNewNameLength - Length of new name.
+       * iCurChar       - Used to scan name for colon and backslash.
+       */
+    FileLongName acrNewName;
+    int          cNewNameLength;
+    int          iCurChar;
+
+      /*
+       * Check that disk is writable.
+       * Get new folder name and check if it's okay.
+       */
+    if ( TestDiskWritable( 0 ) ) {
+        cNewNameLength = @call FMCreateDirText2::
+            MSG_VIS_TEXT_GET_ALL_PTR( acrNewName );
+        if ( 0 < cNewNameLength ) {
+            iCurChar = 0;
+            while ( ( iCurChar <= cNewNameLength   ) &&
+                    ( acrNewName[iCurChar] != ':'  ) &&
+                    ( acrNewName[iCurChar] != '\\' ) ) {
+                iCurChar++;
+            }
+
+              /*
+               * Now either create the new folder, or
+               * display error message and bring up dialog again.
+               */
+            if ( ( cNewNameLength + 1 ) == iCurChar ) {
+                if ( FileCreateDir( acrNewName ) ) {
+                    ErrorMessage( @acrCreateDirErrMsg, (char*)0,
+                                  (char*)0 );
+                }
+                else {
+                    DisplaySpaceFree();
+                    DisplayDirectory();
+                }
+                @send FMCreateDirText2::MSG_VIS_TEXT_DELETE_ALL();
+            }
+            else {
+                ErrorMessage( @acrBadFNameErrMsg, (char*)0, (char*)0 );
+                @send FMCreateDirBox::MSG_GEN_INTERACTION_INITIATE();
+            }
+        }
+    }
+    else {
+        ErrorMessage(  @acrOperOnROMErrMsg, (char*)0, (char*)0 );
+    }
+} /* MSG_FMP_CREATE_FOLDER */
+
+/********************************************************************
+ *              MSG_FMP_REFRESH_DRIVES
+ ********************************************************************
+ * SYNOPSIS:     Recreates the available drive list.
+ * CALLED BY:    FMRefreshDrivesTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call the function MakeDriveList to rescan the
+ *               drives and fill in the appropriate numbers in
+ *               the global drive list.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_REFRESH_DRIVES {
+
+    MakeDriveList();
+} /* MSG_FMP_REFRESH_DRIVES */
+
+/********************************************************************
+ *              MSG_FMP_DRIVE_LIST_APPLY
+ ********************************************************************
+ * SYNOPSIS:     Opens selected drive.
+ * CALLED BY:    FMDriveList
+ * PARAMETERS:   word selection
+ *               word numSelections
+ *               byte stateFlags
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Register the disk, check for errors. Set this as
+ *               the new current path. Update the display.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_DRIVE_LIST_APPLY {
+      /*
+       * dhNewDisk - Handle of the new disk.
+       */
+    DiskHandle dhNewDisk;
+
+      /*
+       * Open new disk.
+       * If no error, set as new current path and
+       * update the display.
+       */
+    dhNewDisk = DiskRegisterDiskSilently( aDrives_g[selection] );
+    if ( NullHandle == dhNewDisk ) {
+          /*
+           * Unselect drive in list.
+           */
+        @send FMDriveList::
+            MSG_GEN_ITEM_GROUP_SET_ITEM_STATE( selection, FALSE );
+    }
+    else {
+          /*
+           * Display new path and free space.
+           * Display files in new drive's root directory.
+           */
+        FileSetCurrentPath( dhNewDisk, "\\" );
+        DisplayCurrentPath();
+        DisplaySpaceFree();
+        DisplayDirectory();
+    }
+} /* MSG_FMP_DRIVE_LIST_APPLY */
+
+/********************************************************************
+ *              MSG_FMP_DRIVE_LIST_MONIKER_QUERY
+ ********************************************************************
+ * SYNOPSIS:     Creates moniker for dynamic list to display.
+ * CALLED BY:    FMDriveList
+ * PARAMETERS:   optr list
+ *               word item
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Using item number, create a text string that
+ *               represents the appropriate drive. Send the
+ *               REPLACE_ITEM_TEXT message to set the moniker.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_DRIVE_LIST_MONIKER_QUERY {
+      /*
+       * acrDriveName - Drive name goes here before being sent to list.
+       */
+    VolumeName acrDriveName;
+
+    if ( DriveGetName( aDrives_g[item], acrDriveName,
+                       DRIVE_NAME_MAX_LENGTH ) ) {
+        @call list::MSG_GEN_DYNAMIC_LIST_REPLACE_ITEM_TEXT( item,
+            acrDriveName );
+    }
+    else {
+        @call list::MSG_GEN_DYNAMIC_LIST_REPLACE_ITEM_TEXT( item,
+            "Error" );
+    }
+} /* MSG_FMP_DRIVE_LIST_MONIKER_QUERY */
+
+/********************************************************************
+ *              MSG_FMP_RENAME_DISK
+ ********************************************************************
+ * SYNOPSIS:     Allows user to rename the current disk.
+ * CALLED BY:    FMDiskRenameTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the current name of the disk and send to the
+ *               input text object. Then ask the user for a new name.
+ *               If ok, rename the disk.
+ * NOTE:         This function checks disk for writability.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_RENAME_DISK {
+      /*
+       * acrTemp    - Used to get disk handle.
+       * dhCurDisk  - Handle of current disk.
+       * acrNewName - New name for the disk.
+       */
+    char       acrTemp[1];
+    DiskHandle dhCurDisk;
+    VolumeName acrNewName;
+
+      /*
+       * Get disk handle so we can get the current
+       * disk name. Then ask user to rename it.
+       * Set to new disk name.
+       * Redisplay current path to show new name.
+       */
+    if ( TestDiskWritable( 0 ) ) {
+        dhCurDisk = FileGetCurrentPath( acrTemp, 0 );
+        DiskGetVolumeName( dhCurDisk, acrNewName );
+        @call FMDiskRenameInputText::
+            MSG_VIS_TEXT_REPLACE_ALL_PTR( acrNewName, 0 );
+        @send FMDiskRenameInputText::MSG_VIS_TEXT_SELECT_ALL();
+        if ( IC_YES == UserDoDialog( @FMDiskRenameBox ) ) {
+            @call FMDiskRenameInputText::
+                MSG_VIS_TEXT_GET_ALL_PTR( acrNewName );
+            if ( DiskSetVolumeName( dhCurDisk, acrNewName ) ) {
+                DiskGetVolumeName( dhCurDisk, acrNewName );
+                ErrorMessage( @acrRenameErrMsg, acrNewName, (char*)0 );
+            }
+            else {
+                DisplayCurrentPath();
+            }
+        }
+    }
+    else {
+        ErrorMessage( @acrOperOnROMErrMsg, (char*)0, (char*)0 );
+    }
+} /* MSG_FMP_RENAME_DISK */
+
+/********************************************************************
+ *              MSG_FMP_INVERT_SELECTED_ITEMS,
+ *              MSG_FMP_SELECT_ALL_ITEMS,
+ *              MSG_FMP_UNSELECT_ALL_ITEMS
+ ********************************************************************
+ * SYNOPSIS:     Invert, select, or unselect all the items at once.
+ * CALLED BY:    FMInvertSelectionTrigger,
+ *               FMSelectAllTrigger,
+ *               FMUnselectAllTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Lock down the list of items, find out how many
+ *               there are, and start looping through them.
+ *               For each one, either flip the selection bit, or
+ *               set it, or clear it, depending on the message.
+ *               Unlock the list and redraw that column of the table.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/2/96          Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_INVERT_SELECTED_ITEMS,
+                               MSG_FMP_SELECT_ALL_ITEMS,
+                               MSG_FMP_UNSELECT_ALL_ITEMS {
+      /*
+       * cItems    - Number of items in directory.
+       * pItem     - Pointer to item being changed.
+       * iCurItem  - Current item being changed.
+       * cElemSize - Used to get pointer.
+       */
+    word       cItems;
+    ItemType * pItem;
+    word       iCurItem;
+    word       cElemSize;
+
+    MemLock( OptrToHandle( @FMItems ) );
+    cItems = ChunkArrayGetCount( @FMItems );
+    for ( iCurItem = 0; iCurItem < cItems; iCurItem++ ) {
+        pItem = ChunkArrayElementToPtr( @FMItems, iCurItem, &cElemSize );
+        switch ( message ) {
+            case MSG_FMP_INVERT_SELECTED_ITEMS :
+                if ( pItem->IT_flags & IF_SELECTED ) {
+                    pItem->IT_flags &= ~IF_SELECTED;
+                }
+                else {
+                    pItem->IT_flags |= IF_SELECTED;
+                }
+                break;
+            case MSG_FMP_SELECT_ALL_ITEMS :
+                pItem->IT_flags |= IF_SELECTED;
+                break;
+            case MSG_FMP_UNSELECT_ALL_ITEMS :
+                pItem->IT_flags &= ~IF_SELECTED;
+                break;
+        }
+    }
+    MemUnlock( OptrToHandle( @FMItems ) );
+    @send FMDirectory::MSG_TABLE_REDRAW_COLUMN( 1 );
+} /* MSG_FMP_INVERT_SELECTED_ITEMS,
+     MSG_FMP_SELECT_ALL_ITEMS,
+     MSG_FMP_UNSELECT_ALL_ITEMS */
+
+/********************************************************************
+ *              MSG_FMP_COPY_ITEMS
+ ********************************************************************
+ * SYNOPSIS:     Copy the selected items to the clipboard.
+ * CALLED BY:    FMCopyTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get names of selected items and place in a memory
+ *               block (the clipboard). Copy the source path and
+ *               disk handle, too.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_COPY_ITEMS {
+      /*
+       * cItems     - Number of selected items.
+       * iCurItem   - Current item being copied.
+       * pClipItems - Pointer to the clipboard block.
+       * iClipPos   - Current item in the clipboard.
+       * pItem      - Pointer to item being scanned.
+       * cElemSize  - Used to get pItem.
+       */
+    word       cItems;
+    word       iCurItem;
+    ItemType * pClipItems;
+    word       iClipPos;
+    ItemType * pItem;
+    word       cElemSize;
+
+      /*
+       * Free the existing clipboard.
+       * Get number of selected items and allocate a
+       * new clipboard of the proper size.
+       */
+    if ( NullHandle != mhClipItems_g ) {
+EC(     ECCheckMemHandle( mhClipItems_g ); )
+        MemFree( mhClipItems_g );
+        mhClipItems_g = NullHandle;
+    }
+    cClipItems_g = GetNumSelected();
+    if ( cClipItems_g ) {
+        mhClipItems_g = MemAlloc( cClipItems_g * sizeof( ItemType ),
+                                  HF_SWAPABLE, 0 );
+EC(     ECCheckMemHandle( mhClipItems_g ); )
+        pClipItems = (ItemType*)MemLock( mhClipItems_g );
+EC(     ECCheckBounds( pClipItems ); )
+
+          /*
+           * For each item in the directory:
+           *   If item is selected,
+           *     Copy item name and type to clipboard.
+           */
+        MemLock( OptrToHandle( @FMItems ) );
+        cItems = ChunkArrayGetCount( @FMItems );
+        iClipPos = 0;
+        for ( iCurItem = 0; iCurItem < cItems; iCurItem++ ) {
+            pItem = ChunkArrayElementToPtr( @FMItems, iCurItem,
+                                            &cElemSize );
+EC(         ECCheckBounds( pItem ); )
+            if ( pItem->IT_flags & IF_SELECTED ) {
+                pClipItems[iClipPos] = pItem[0];
+                iClipPos++;
+            }
+        }
+
+          /*
+           * Unlock the directory and clipboard.
+           * Get the current path and disk for the source
+           * of the clipboard items.
+           */
+        MemUnlock( OptrToHandle( @FMItems ) );
+        MemUnlock( mhClipItems_g );
+        dhSourceDisk_g = FileGetCurrentPath( acrSourcePath_g,
+                                             FM_PATH_BUFFER_SIZE );
+    }
+} /* MSG_FMP_COPY_ITEMS */
+
+/********************************************************************
+ *              MSG_FMP_RENAME_ITEMS
+ ********************************************************************
+ * SYNOPSIS:     Renames the currently selected items.
+ * CALLED BY:    FMRenameTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Loop for each item in the directory (and while the
+ *               user hasn't aborted yet) and see if item is
+ *               selected. If so, ask user to rename item. If ok,
+ *               rename the item.
+ * NOTE:         This function checks disk for writability.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_RENAME_ITEMS {
+      /*
+       * cDirItems  - Number of items in directory.
+       * iCurItem   - Current item being processed.
+       * acrNewName - Name of item after renaming.
+       * reply      - User response to rename dialog.
+       * pItem      - Pointer to item in array.
+       * cElemSize  - Size of element in array.
+       */
+    word               cDirItems;
+    word               iCurItem;
+    FileLongName       acrNewName;
+    InteractionCommand reply;
+    ItemType *         pItem;
+    word               cElemSize;
+
+    if ( GetNumSelected() ) {
+          /*
+           * Check that disk is writable.
+           * Get number of items in directory.
+           * Initialize variables.
+           */
+        if ( TestDiskWritable( 0 ) ) {
+            MemLock( OptrToHandle( @FMItems ) );
+            cDirItems = ChunkArrayGetCount( @FMItems );
+            iCurItem = 0;
+            reply = IC_YES;
+
+               /*
+                * While there are items to process and
+                * user hasn't quit: See if item is selected.
+                */
+            while ( ( iCurItem <  cDirItems  ) &&
+                    ( reply    != IC_DISMISS ) &&
+                    ( reply    != IC_NULL    ) ) {
+                pItem = ChunkArrayElementToPtr( @FMItems, iCurItem,
+                                                &cElemSize );
+    EC(         ECCheckBounds( pItem ); )
+                if ( pItem->IT_flags & IF_SELECTED ) {
+                      /*
+                       * Rename item.
+                       * If selected, get it's name and ask to rename it.
+                       *   If okay to rename, rename file.
+                       *     Handle rename error.
+                       * Get next item.
+                       */
+                    @send FMRenameInputText::
+                        MSG_VIS_TEXT_REPLACE_ALL_PTR( pItem->IT_name, 0 );
+                    @send FMRenameInputText::MSG_VIS_TEXT_SELECT_ALL();
+                    reply = UserDoDialog( @FMRenameBox );
+                    if ( IC_YES == reply ) {
+                        @call FMRenameInputText::
+                            MSG_VIS_TEXT_GET_ALL_PTR( acrNewName );
+                        if ( FileRename( pItem->IT_name, acrNewName ) ) {
+                              /* Error in rename. */
+                            ErrorMessage( @acrRenameErrMsg,
+                                          pItem->IT_name, (char*)0 );
+                        }
+                    }
+                } /* if IF_SELECTED */
+                iCurItem++;
+            } /* while */
+            MemUnlock( OptrToHandle( @FMItems ) );
+        }
+        else {
+            ErrorMessage( @acrOperOnROMErrMsg, (char*)0, (char*)0 );
+        }
+        DisplayDirectory();
+    }
+} /* MSG_FMP_RENAME_ITEMS */
+
+/********************************************************************
+ *              MSG_FMP_DELETE_ITEMS
+ ********************************************************************
+ * SYNOPSIS:     Deletes the currently selected items.
+ * CALLED BY:    FMDeleteTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     If there are selected items, and if the disk is
+ *               writable, and if the user is sure, THEN delete the
+ *               selected items. Otherwise report an error if the
+ *               disk is read-only.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *      NF      9/19/96         Changed to procedural model
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_DELETE_ITEMS {
+
+    if ( GetNumSelected() ) {
+        if ( TestDiskWritable( 0 ) ) {
+            MemLock( OptrToHandle( @acrDeleteItemsMsg ) );
+            if ( UserStandardDialog( (char*)0, (char*)0, (char*)0,
+                     (char*)0, LMemDeref( @acrDeleteItemsMsg ),
+                     ( ( CDT_WARNING << CDBF_DIALOG_TYPE_OFFSET ) |
+                       ( GIT_AFFIRMATION <<
+                         CDBF_INTERACTION_TYPE_OFFSET ) ) )
+                 == IC_YES ) {
+                ShowBusyBox( "Deleting files..." );
+                ProcDeleteItems();
+                HideBusyBox();
+                DisplayDirectory();
+                DisplaySpaceFree();
+            }
+            MemUnlock( OptrToHandle( @acrDeleteItemsMsg ) );
+        }
+        else {
+            ErrorMessage( @acrDelete2ErrMsg, (char*)0, (char*)0 );
+        }
+    }
+} /* MSG_FMP_DELETE_ITEMS */
+
+/********************************************************************
+ *              MSG_FMP_PASTE_ITEMS
+ ********************************************************************
+ * SYNOPSIS:     Copy the items on the clipboard to the current
+ *               directory.
+ * CALLED BY:    FMPasteTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the current path and disk for the destination
+ *               of the move. Then call ProcMoveCopyItems with FALSE
+ *               to copy the items.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_PASTE_ITEMS {
+      /*
+       * acrCurPath,
+       * dhCurDisk - Current path and disk.
+       */
+    FMPathBuffer acrCurPath;
+    DiskHandle   dhCurDisk;
+
+    if ( NullHandle != mhClipItems_g ) {
+EC(     ECCheckMemHandle( mhClipItems_g ); )
+        dhCurDisk = FileGetCurrentPath( acrCurPath, FM_PATH_BUFFER_SIZE );
+        ProcMoveCopyItems( mhClipItems_g, cClipItems_g, acrSourcePath_g,
+                           dhSourceDisk_g, acrCurPath, dhCurDisk, FALSE );
+        FileSetCurrentPath( dhCurDisk, acrCurPath );
+        HideBusyBox();
+        DisplaySpaceFree();
+        DisplayDirectory();
+    }
+} /* MSG_FMP_PASTE_ITEMS */
+
+/********************************************************************
+ *              MSG_FMP_PASTE_ORIGINAL_ITEMS
+ ********************************************************************
+ * SYNOPSIS:     Move the items on the clipboard to the current
+ *               directory.
+ * CALLED BY:    FMPasteOrigTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the current path and disk for the destination
+ *               of the move. Then call ProcMoveCopyItems with TRUE
+ *               to move the items.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *******************************************************************/
+@extern method FMProcessClass, MSG_FMP_PASTE_ORIGINAL_ITEMS {
+      /*
+       * acrCurPath,
+       * dhCurDisk - Current path and disk.
+       */
+    FMPathBuffer acrCurPath;
+    DiskHandle   dhCurDisk;
+
+    if ( NullHandle != mhClipItems_g ) {
+EC(     ECCheckMemHandle( mhClipItems_g ); )
+        dhCurDisk = FileGetCurrentPath( acrCurPath, FM_PATH_BUFFER_SIZE );
+        ProcMoveCopyItems( mhClipItems_g, cClipItems_g,
+                           acrSourcePath_g, dhSourceDisk_g,
+                           acrCurPath, dhCurDisk, TRUE );
+        MemFree( mhClipItems_g );
+        mhClipItems_g = NullHandle;
+        cClipItems_g = 0;
+        FileSetCurrentPath( dhCurDisk, acrCurPath );
+        HideBusyBox();
+        DisplaySpaceFree();
+        DisplayDirectory();
+    }
+} /* MSG_FMP_PASTE_ORIGINAL_ITEMS */
+

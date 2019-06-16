@@ -1,0 +1,297 @@
+/********************************************************************
+ *
+ *  Portions Copyright (c) Geoworks 1991-92 -- All Rights Reserved.
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Primary static objects
+ * FILE:        appUI.goc
+ *
+ * AUTHORS:     Brian Chin
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial version
+ *      NF      8/8/95          Added file support
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This is like Scrapbook, but with the added feature of
+ *      drag and drop support.
+ *      This file contains all the primary static objects.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/gviewcc.goh>
+    @include <objects/vltextc.goh>
+    @include <objects/clipbrd.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl SBProcessClass, neverSaved;
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+    @extern method SBProcessClass, MSG_SB_PROCESS_AWAKEN_GOTO_LIST;
+
+/********************************************************************
+ *              External Objects
+ *******************************************************************/
+    @extern object @SBDocumentGroup;
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              UI Objects
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start Application;
+
+  /* Application object */
+@object GenApplicationClass SBApplication = {
+    GI_visMoniker = list { @SBTextMoniker }
+    GI_comp = @SBPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+             @SBPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_ACTIVE_LIST ) =
+             @SBDocumentControl,
+             @SBViewControl,
+             @SBDisplayControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_APP_STARTUP ) =
+             @SBDocumentControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_SELF_LOAD_OPTIONS ) =
+             @SBDocumentControl,
+             @SBEditControl,
+             @SBViewControl,
+             @SBDisplayControl;
+    ATTR_GEN_INIT_FILE_CATEGORY = SB_INIT_CATEGORY;
+    HINT_APP_IS_PRODUCTIVITY_ORIENTED;
+}
+
+@visMoniker SBTextMoniker = "Scrapy";
+@localize { "Name of the application." };
+
+@end Application;
+
+/********************************************************************
+ *              Interface Resource
+ *******************************************************************/
+@start Interface;
+
+@object GenPrimaryClass SBPrimary = {
+    GI_comp = @SBFileGroup,
+              @SBEditControl,
+              @SBViewControl,
+              @SBDisplayControl,
+              @SBDisplayGroup,
+              @SBControlsInteraction,
+              @SBDummyGroup;
+    ATTR_GEN_HELP_CONTEXT = "TOC";
+    HINT_SIZE_WINDOW_AS_RATIO_OF_FIELD = { SWSS_RATIO | PCT_70,
+                                           SWSS_RATIO | PCT_70 };
+}
+
+  /* File menu with DocumentControl. */
+@object GenInteractionClass SBFileGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @SBDocumentControl,
+              @SBAboutBox;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_FILE_MENU );
+}
+
+  /* Document control UI */
+@object GenDocumentControlClass SBDocumentControl = {
+    GDCI_documentToken = { "SBOO", 16426 };
+    GDCI_noNameText = "No Document";
+    @localize { "Displayed when no document has been opened." };
+    GDCI_features = @default &
+                    ~( GDCF_SUPPORTS_TEMPLATES
+                     | GDCF_SUPPORTS_USER_SETTABLE_EMPTY_DOCUMENT
+                     | GDCF_SUPPORTS_USER_MAKING_SHARED_DOCUMENTS
+                     | GDCF_SUPPORTS_USER_SETTABLE_DEFAULT_DOCUMENT
+                     | GDCF_NAME_ON_PRIMARY );
+    GDCI_documentGroup = SBDocumentGroup;
+    GDCI_enableDisableList = SBDocEnableList;
+}
+
+@chunk optr SBDocEnableList[] = {
+    @SBControlsInteraction
+};
+
+  /* About box */
+@object GenInteractionClass SBAboutBox = {
+    GI_visMoniker = "About";
+    @localize { "Title of About box." };
+    GI_comp = @SBAboutText1,
+              @SBAboutText2,
+              @SBAboutText3,
+              @SBAboutText4,
+              @SBAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    ATTR_GEN_HELP_CONTEXT = "dbCredits";
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+@object GenGlyphClass SBAboutText1 = {
+    GI_visMoniker = "Scrapy V0.4";
+    @localize { "Name and version of the program." };
+}
+
+@object GenGlyphClass SBAboutText2 = {
+    GI_visMoniker = "Portions of this program are";
+    @localize { "Don't change this line." };
+}
+
+@object GenGlyphClass SBAboutText3 = {
+    GI_visMoniker = "Copyright © Geoworks 1993, 1994";
+    @localize { "Don't change this line." };
+}
+
+@object GenGlyphClass SBAboutText4 = {
+    GI_visMoniker = "and used by permission.";
+    @localize { "Don't change this line." };
+}
+
+@object GenTriggerClass SBAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Edit menu, cut, copy, paste. */
+@object GenEditControlClass SBEditControl = {
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_EDIT_MENU );
+    ATTR_GEN_CONTROL_PROHIBIT_UI = GECF_UNDO
+                                 | GECF_SELECT_ALL;
+    ATTR_GEN_CONTROL_PROHIBIT_TOOLBOX_UI = GECTF_UNDO
+                                         | GECTF_SELECT_ALL;
+}
+
+  /* View menu, allows zooming and scroller control. */
+@object GenViewControlClass SBViewControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_VIEW_MENU );
+}
+
+  /* Window menu, manages multiple displays. */
+@object GenDisplayControlClass SBDisplayControl = {
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_WINDOW_MENU );
+}
+
+  /* DisplayGroup, keeps track of multiple displays. */
+@object GenDisplayGroupClass SBDisplayGroup = {
+    ATTR_GEN_DESTINATION_CLASS = { (ClassStruct*)&SBDocumentClass };
+    HINT_DEFAULT_TARGET;
+    HINT_DEFAULT_FOCUS;
+}
+
+  /* Controls for paging through items. */
+@object GenInteractionClass SBControlsInteraction = {
+    GI_states = @default & ~GS_ENABLED;
+    GI_comp = @SBPrevTrigger,
+              @SBNextTrigger,
+              @SBGotoTrigger,
+              @SBItemNameText;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_ALLOW_CHILDREN_TO_WRAP;
+}
+
+@object GenTriggerClass SBPrevTrigger = {
+    GI_visMoniker = 'P', "Previous";
+    @localize { "Moves to previous item in scrapbook." };
+    GTI_destination = ( TO_APP_TARGET );
+    GTI_actionMsg = MSG_SB_DOCUMENT_PREV_ITEM;
+    ATTR_GEN_TRIGGER_IMMEDIATE_ACTION;
+}
+
+@object GenTriggerClass SBNextTrigger = {
+    GI_visMoniker = 'N', "Next";
+    @localize { "Moves to following item in scrapbook." };
+    GTI_destination = ( TO_APP_TARGET );
+    GTI_actionMsg = MSG_SB_DOCUMENT_NEXT_ITEM;
+    ATTR_GEN_TRIGGER_IMMEDIATE_ACTION;
+}
+
+@object GenTriggerClass SBGotoTrigger = {
+    GI_visMoniker = 'G', "Goto";
+    @localize { "Shows list of items in scrapbook." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_SB_PROCESS_AWAKEN_GOTO_LIST;
+    ATTR_GEN_TRIGGER_IMMEDIATE_ACTION;
+}
+
+@object GenTextClass SBItemNameText = {
+    GI_visMoniker = "Name (Hit Enter to set):";
+    @localize { "Must hit Enter to save the item's name." };
+    GTXI_maxLength = CLIPBOARD_ITEM_NAME_LENGTH;
+    GTXI_attrs = @default | GTA_SINGLE_LINE_TEXT;
+    GTXI_destination = ( TO_APP_TARGET );
+    GTXI_applyMsg = MSG_SB_DOCUMENT_SET_ITEM_NAME;
+}
+
+  /* Provides path to non-user initiatable dialog boxes. */
+@object GenInteractionClass SBDummyGroup = {
+    GI_comp = @SBGotoItemBox;
+    GII_attrs = @default | GIA_NOT_USER_INITIATABLE;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+  /* Holds the dynamic list of items. */
+@object GenInteractionClass SBGotoItemBox = {
+    GI_visMoniker = "Goto Item";
+    @localize { "Title of \"Goto\" dialog." };
+    GI_comp = @SBGotoItemList,
+              @SBGotoCloseTrigger;
+    GII_attrs = @default | GIA_NOT_USER_INITIATABLE;
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_ORGANIZATIONAL;
+    HINT_INTERACTION_MAKE_RESIZABLE;
+}
+
+@object GenTriggerClass SBGotoCloseTrigger = {
+  GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+  ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_DISMISS };
+  HINT_SEEK_REPLY_BAR;
+}
+
+  /* Displays list of items for user to jump to. */
+@object GenDynamicListClass SBGotoItemList = {
+    GIGI_destination = ( TO_APP_TARGET );
+    GIGI_applyMsg = MSG_SB_DOCUMENT_LIST_APPLY;
+    GDLI_queryMsg = MSG_SB_DOCUMENT_LIST_MONIKER_QUERY;
+    HINT_ITEM_GROUP_SCROLLABLE;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_EXPAND_HEIGHT_TO_FIT_PARENT;
+}
+
+@end Interface;
+
+/********************************************************************
+ *              Strings Resource
+ * These are localizable strings, mostly error messages.
+ *******************************************************************/
+@start Strings;
+
+@chunk char acrBadLMemErrMsg[] = "Error resizing LMem block.";
+@localize { "There was an internal error." };
+
+@end Strings;
+

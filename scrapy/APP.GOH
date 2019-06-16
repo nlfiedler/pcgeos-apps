@@ -1,0 +1,139 @@
+/********************************************************************
+ *
+ *  Portions Copyright (c) Geoworks 1991-92 -- All Rights Reserved.
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Application Header
+ * FILE:        app.goh
+ *
+ * AUTHORS:     Brian Chin
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial version
+ *      NF      8/8/95          Added file support
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file is the application header file. It contains the
+ *      constants, data type definitions, and class definitions.
+ *
+ *******************************************************************/
+
+#ifndef __APP_GOH
+#define __APP_GOH
+
+/********************************************************************
+ *              Constants & Macros
+ *******************************************************************/
+
+       /* This is the identifier for the text transfer format that
+        * the Geoworks text object creates. It's a 32-bit number,
+        * with MANUFACTURER_ID_GEOWORKS in the high word, and
+        * CIF_TEXT in the low.
+        * The FormatIDFromManufacturerAndType combines the two in
+        * the proper order, as you'd expect. */
+    #define TEXT_FORMAT     FormatIDFromManufacturerAndType( \
+                                MANUFACTURER_ID_GEOWORKS, CIF_TEXT )
+    #define GROBJ_FORMAT    FormatIDFromManufacturerAndType( \
+                                MANUFACTURER_ID_GEOWORKS, CIF_GROBJ )
+    #define TEXT_POINT_SIZE 12
+
+       /* Maximum memory block size. */
+    #define MAX_BLOCK_SIZE  65536
+
+       /* Document Protocol */
+    #define SB_DOCUMENT_PROTOCOL_MAJOR 1
+    #define SB_DOCUMENT_PROTOCOL_MINOR 1
+
+       /* Scrapy .INI file category. */
+    #define SB_INIT_CATEGORY "Scrapy"
+
+/********************************************************************
+ *              Data Type Definitions
+ *******************************************************************/
+      /* Type used when indexing the items. */
+    typedef word ItemIndexType;
+
+      /* Map block for Scrapy's documents. */
+    typedef struct {
+          /*
+           * SBMB_standardHeader - This never gets accessed by us.
+           *                       Must be first one in structure.
+           * SBMB_chaItemInfo    - Array of item info entries.
+           */
+        LMemBlockHeader SBMB_standardHeader;
+        ChunkHandle     SBMB_chaItemInfo;
+    } SBMapBlock;
+
+      /* Type for the item entry in the map block. */
+    typedef struct {
+          /*
+           * SBIH_vmh     - VM block containing this item.
+           * SBIH_acrName - User-defined name of this item.
+           */
+        VMBlockHandle           SBIH_vmh;
+        ClipboardItemNameBuffer SBIH_acrName;
+    } SBItemEntry;
+
+      /* Paragraph attribute array type. */
+/*
+    typedef struct {
+        TextElementArrayHeader header;
+        word                   elementOffset;
+        VisTextParaAttr        element;
+    } SBParaAttrArray;
+*/
+
+      /* Add some additional fatal error constants. */
+    typedef enum {
+        SB_ERR_CHUNK_ARRAY_CREATE_FAILED
+    } FatalErrors;
+
+/********************************************************************
+ *              Class Definitions
+ *******************************************************************/
+      /*
+       * We only need to add one extra message,
+       * the one to bring up the goto list box.
+       */
+    @class SBProcessClass, GenProcessClass;
+      /* Messages */
+    @message void MSG_SB_PROCESS_AWAKEN_GOTO_LIST();
+    @endc;
+
+      /*
+       * This is the workhorse of the application.
+       * It does most of the item handling.
+       */
+    @class SBDocumentClass, GenDocumentClass;
+      /* Messages. */
+    @message void MSG_SB_DOCUMENT_ADD_ITEM( VMBlockHandle vmBlock_p,
+                                            ClipboardItemHeader * itemPtr_p );
+    @message void MSG_SB_DOCUMENT_DISPLAY_ITEM();
+    @message void MSG_SB_DOCUMENT_SET_ITEM_NAME();
+    @message void MSG_SB_DOCUMENT_PREV_ITEM();
+    @message void MSG_SB_DOCUMENT_NEXT_ITEM();
+    @message void MSG_SB_DOCUMENT_GOTO_ITEM( ItemIndexType item_p );
+    @message (GEN_ITEM_GROUP_APPLY_MSG)MSG_SB_DOCUMENT_LIST_APPLY;
+    @message (GEN_DYNAMIC_LIST_QUERY_MSG)MSG_SB_DOCUMENT_LIST_MONIKER_QUERY;
+          /* Instance Data:
+           * SBDI_mhText    - Handle of current text object.
+           * SBDI_cNumItems - Number of items in book.
+           * SBDI_iCurItem  - Index to currently displayed item.
+           */
+        @instance MemHandle     SBDI_mhText;
+        @instance ItemIndexType SBDI_cNumItems;
+        @instance ItemIndexType SBDI_iCurItem;
+    @endc;
+
+      /*
+       * This is used to handle text items.
+       */
+    @class SBTextClass, VisLargeTextClass;
+    @endc;
+
+#endif
+

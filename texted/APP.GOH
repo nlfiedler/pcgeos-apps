@@ -1,0 +1,89 @@
+/********************************************************************
+ *
+ * PROJECT:     Text Editor
+ * MODULE:      Application Header
+ * FILE:        app.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *
+ * DESCRIPTION:
+ *      This is a text file editor for GEOS-based devices. It's
+ *      features include: spell checking, cut/copy/paste/undo,
+ *      font control, point size control, printing, and multi-file
+ *      editing.
+ *
+ *      This contains the constants, structures, and classes.
+ *
+ *******************************************************************/
+
+#ifndef __APP_GOH
+#define __APP_GOH
+
+   /* Enable the particular platform-dependent code.
+    * Search all files for "PLATFORM:" for other changes. */
+@define OMNIGO
+#define OMNIGO
+/*
+@define DESKTOP
+#define DESKTOP
+@define ZOOMER
+#define ZOOMER
+*/
+
+/********************************************************************
+ *              Constants
+ *******************************************************************/
+       /* This is the data block size when copying document
+        * in and out of the text object. */
+    #define TFE_FILE_BLOCK_SIZE 1024
+
+       /* GEOS.INI category and keys. */
+    #define TFE_INI_CATEGORY     "TextEdit"
+    #define TFE_INI_PTSZ_KEYWORD "TFEPointSize"
+    #define TFE_INI_FONT_KEYWORD "TFEFontID"
+
+       /* Default characteristics of text. */
+    #define TFE_DEFAULT_PS   12
+    #define TFE_PRINT_PS     12
+    #define TFE_DEFAULT_FONT FID_DTC_URW_MONO
+    #define TFE_PRINT_FONT   FID_DTC_URW_MONO
+
+/********************************************************************
+ *              Data Types
+ *******************************************************************/
+      /* Define some additional fatal errors for our app. */
+    typedef enum {
+        TFE_ERR_BAD_CHAR_INDEX_VALUE,
+        TFE_ERR_BAD_CHAR_LEFT_VALUE,
+        TFE_ERR_LMEM_REALLOC_FAILED,
+        TFE_ERR_NUM_PAGES_IS_ZERO
+    } FatalErrors;
+
+/********************************************************************
+ *              Class Definitions
+ *******************************************************************/
+    @class TFEProcessClass, GenProcessClass;
+    @endc;
+
+       /* We want to intercept the MSG_GEN_DISPLAY_CLOSE
+        * so we can make sure the document is closed. */
+    @class TFEPrimaryClass, GenPrimaryClass;
+    @endc;
+
+    @class TFEDocumentClass, GenDocumentClass;
+          /* Handle of the duplicated text object. */
+        @instance MemHandle TFEDI_mhText;
+    @endc;
+
+    @class TFETextClass, VisLargeTextClass;
+          /* TRUE if text changes mean document changes. */
+        @instance Boolean TFETI_allowChanges;
+    @endc;
+
+#endif
+

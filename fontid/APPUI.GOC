@@ -1,0 +1,184 @@
+/********************************************************************
+ *
+ * PROJECT:     Change Sys Font
+ * MODULE:      Static Objects Module
+ * FILE:        appUI.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/18/96         Initial version
+ *
+ * DESCRIPTION:
+ *      Lets the user change the system font and size on the
+ *      OmniGo.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl FIDProcessClass, neverSaved;
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+    @extern method FIDProcessClass, MSG_FIDP_SET_FONT_ID;
+    @extern method FIDProcessClass, MSG_FIDP_SAVE_FONT_INFO;
+
+/********************************************************************
+ *              Global Variable Declarations
+ *******************************************************************/
+      /*
+       * fidFontID_g - Font id to make as system font.
+       * pointSize_g - Size to set text object to.
+       */
+    FontID  fidFontID_g;
+    WWFixed pointSize_g;
+
+/********************************************************************
+ *              Static Object Resources
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start Application;
+
+@object GenApplicationClass FIDApp = {
+    GI_visMoniker = list { @FIDTextMoniker };
+    GI_comp = @FIDPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+             @FIDPrimary;
+    HINT_APP_IS_PRODUCTIVITY_ORIENTED;
+}
+
+@visMoniker FIDTextMoniker = "Change Sys Font";
+@localize { "Name of program displayed in title bar." };
+
+@end Application;
+
+/********************************************************************
+ *              Interface Resource
+ *******************************************************************/
+@start Interface;
+
+  /* Primary window */
+@object GenPrimaryClass FIDPrimary = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @FIDSaveInfoTrigger,
+              @FIDAboutBox,
+              @FIDFontGroup,
+              @FIDGenText;
+    HINT_ORIENT_CHILDREN_VERTICALLY;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+    HINT_CENTER_CHILDREN_VERTICALLY;
+}
+
+  /* Saves font and size info to GEOS.INI file. */
+@object GenTriggerClass FIDSaveInfoTrigger = {
+    GI_visMoniker = 'S', "Save";
+    @localize { "Saves the font settings to GEOS.INI file." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_FIDP_SAVE_FONT_INFO;
+    HINT_SEEK_MENU_BAR;
+    HINT_SEEK_SLOT = 0;
+}
+
+  /* Credits and copyright messages */
+@object GenInteractionClass FIDAboutBox = {
+    GI_visMoniker = 'A', "About";
+    @localize { "Name of dialog containing author and copyright \
+information." };
+    GI_comp = @FIDAboutText1,
+              @FIDAboutText2,
+              @FIDAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+    HINT_SEEK_MENU_BAR;
+    HINT_SEEK_SLOT = 1;
+}
+
+@object GenGlyphClass FIDAboutText1 = {
+    GI_visMoniker = "HP OmniGo 100 Font Changer";
+    @localize { "Name of program displayed in about box." };
+}
+
+@object GenGlyphClass FIDAboutText2 = {
+    GI_visMoniker = "Blue Marsh Softworks, 1996";
+    @localize { "Don't change this." };
+}
+
+  /* Makes About box go away. */
+@object GenTriggerClass FIDAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Font group. */
+@object GenItemGroupClass FIDFontGroup = {
+    GI_visMoniker = "Fonts:";
+    @localize { "Title of font list." };
+    GI_comp = @FIDCalendarItem,
+              @FIDSansItem,
+              @FIDMonoItem,
+              @FIDJSysItem,
+              @FIDNotepadItem;
+    GIGI_destination = process;
+    GIGI_applyMsg = MSG_FIDP_SET_FONT_ID;
+    HINT_ORIENT_CHILDREN_VERTICALLY;
+}
+
+@object GenItemClass FIDCalendarItem = {
+    GI_visMoniker = "Calendar";
+    @localize { "Name of font used by Calendar." };
+    GII_identifier = FONT_CALENDAR;
+}
+
+@object GenItemClass FIDSansItem = {
+    GI_visMoniker = "URW Sans";
+    @localize { "Name of Sans Serif font." };
+    GII_identifier = FONT_SANS;
+}
+
+@object GenItemClass FIDMonoItem = {
+    GI_visMoniker = "URW Mono";
+    @localize { "Name of the outline mono-spaced font." };
+    GII_identifier = FONT_MONO;
+}
+
+@object GenItemClass FIDJSysItem = {
+    GI_visMoniker = "System";
+    @localize { "Name of OmniGo system font." };
+    GII_identifier = FONT_JSYS;
+}
+
+@object GenItemClass FIDNotepadItem = {
+    GI_visMoniker = "Notepad";
+    @localize { "Name of font used by Notepad." };
+    GII_identifier = FONT_NOTEPAD;
+}
+
+  /* Sample text object. */
+@object GenTextClass FIDGenText = {
+    GI_visMoniker = "Sample Text:";
+    @localize { "Title of text object showing sample font." };
+    GI_attrs = @default | GA_TARGETABLE;
+    GTXI_text = "abc ABC 123 !@#";
+    GTXI_attrs = @default | GTA_SINGLE_LINE_TEXT;
+    HINT_DEFAULT_TARGET;
+    HINT_PLACE_MONIKER_ABOVE;
+}
+
+@end Interface;
+

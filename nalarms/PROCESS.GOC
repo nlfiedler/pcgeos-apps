@@ -1,0 +1,443 @@
+/********************************************************************
+ *
+ * PROJECT:     Alarm Clock
+ * MODULE:      Methods for Process Class
+ * FILE:        process.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *
+ * DESCRIPTION:
+ *      Code for the process object. These methods deal with the
+ *      setting and clearing of the alarm, as well as sounding off
+ *      the alarm when the time comes.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Objects/gadgets.goh>
+    @include <rtcm.goh>
+    #include <Ansi/string.h>
+    #include <initfile.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Method Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_OPEN_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Perform some startup operations before the program
+ *               becomes fully realized on the screen.
+ * PARAMETERS:   AppAttachFlags attachFlags
+ *               MemHandle      launchBlock
+ *               MemHandle      extraState
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Nothing to check.
+ * STRATEGY:     Set the font to URW Sans and set the point size
+ *               to 48 pt of the ACTimeText. Display the current
+ *               time in the time text object. Start the time
+ *               display update timer.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *******************************************************************/
+@extern method ACProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION {
+      /*
+       * fpPointSize    - Used to set the size of the time text.
+       * uCurDateTime   - Used to set the text of the time text.
+       * acrCurDateTime - Current time in string format.
+       * bAlarmSet      - Value read from GEOS.INI file.
+       * eventToken,
+       * eventID        - Used to prevent stupid compiler warning.
+       * mhMsgBlock,
+       * cMsgLength     - Reminder message read from GEOS.INI.
+       */
+    WWFixed          fpPointSize;
+    TimerDateAndTime uCurDateTime;
+    char             acrCurDateTime[8];
+    Boolean          bAlarmSet;
+    word             eventToken;
+    word             eventID;
+    MemHandle        mhMsgBlock;
+    word             cMsgLength;
+
+      /*
+       * Call the superclass to start app going.
+       * Set the font and point size of the text object.
+       */
+    @callsuper();
+    @send ACTimeText::MSG_VIS_TEXT_SET_FONT_ID( FID_DTC_URW_SANS,
+        TEXT_ADDRESS_PAST_END, 1 );
+    fpPointSize.WWF_int = 48;
+    fpPointSize.WWF_frac = 0;
+    @send ACTimeText::MSG_VIS_TEXT_SET_POINT_SIZE( fpPointSize,
+        TEXT_ADDRESS_PAST_END, 1 );
+
+      /*
+       * Display the current time initially.
+       */
+    TimerGetDateAndTime( &uCurDateTime );
+    LocalFormatDateTime( acrCurDateTime, DTF_HM, &uCurDateTime );
+    @call ACTimeText::MSG_VIS_TEXT_REPLACE_ALL_PTR( acrCurDateTime, 0 );
+
+      /*
+       * Setup the current time display update timer.
+       * It will trigger every second.
+       * Clear the alarm timer initially.
+       */
+    ACCurTimeHandle_g = TimerStart( TIMER_EVENT_CONTINUAL, @ACApp, 0,
+        MSG_AC_APPLICATION_DISPLAY_CURRENT_TIME,
+        60, &ACCurTimeTimerID_g );
+    if ( ( FALSE == InitFileReadBoolean( AC_INIT_FILE_CATEGORY,
+                                         "alarmSet", &bAlarmSet ) ) &&
+         ( TRUE == bAlarmSet ) ) {
+        @send ACAlarmOnOffBooleanGroup::
+            MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE( AOO_ON, 0 );
+        InitFileReadInteger( AC_INIT_FILE_CATEGORY,
+                             "eventToken", &eventToken );
+        ACRTCMeventToken_g = eventToken;
+        InitFileReadInteger( AC_INIT_FILE_CATEGORY,
+                             "eventID", &eventID );
+        ACRTCMeventID_g = eventID;
+        InitFileReadStringBlock( AC_INIT_FILE_CATEGORY,
+                                 "eventMsg", &mhMsgBlock,
+                                 0, &cMsgLength );
+EC(     ECCheckMemHandle( mhMsgBlock ); )
+        @call ACMessageText::MSG_VIS_TEXT_REPLACE_ALL_BLOCK(
+            mhMsgBlock, cMsgLength );
+        MemFree( mhMsgBlock );
+    }
+    else {
+        ACRTCMeventToken_g = 0;
+        ACRTCMeventID_g = 0;
+    }
+} /* MSG_GEN_PROCESS_OPEN_APPLICATION */
+
+/********************************************************************
+ *              MSG_AC_PROCESS_ALARM_SET_OR_RESET
+ ********************************************************************
+ * SYNOPSIS:     Set or clear the alarm, based on the state of
+ *               the boolean group.
+ * PARAMETERS:   word selection
+ *               word numSelections
+ *               byte stateFlags
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Nothing to check.
+ * STRATEGY:     If no booleans are selected (there's only one) clear
+ *               the alarm. Else, set the alarm according to the
+ *               time in the TimeInput object. Use the funky encoding
+ *               scheme for the real-time event timer.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/3/96          Initial version
+ *******************************************************************/
+@extern method ACProcessClass, MSG_AC_PROCESS_ALARM_SET_OR_RESET {
+      /*
+       * uCurDate      - Today's date, used to set alarm for today
+       *                 or tomorrow.
+       * cTicks        - Used to set real-time event timer.
+       * uAlarmTime    - Alarm time as set in the TimeInput object.
+       * ourGeodeToken - GeodeToken for nalarm.
+       */
+    TimerDateAndTime uCurDate;
+    word             cTicks;
+    TimeParamsStruct uAlarmTime;
+    GeodeToken       ourGeodeToken;
+
+      /*
+       * Turn off the alarm regardless of the setting.
+       * If alarm is set to be on, set the alarm
+       * according to TimeInput object.
+       */
+    if ( 0 != ACRTCMeventToken_g ) {
+        RTCMUnregisterEvent( ACRTCMeventToken_g, ACRTCMeventID_g );
+        ACRTCMeventToken_g = 0;
+    }
+    if ( AOO_ON == @call ACAlarmOnOffBooleanGroup::
+             MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS() ) {
+        /* How to set a real-time timer.
+         * Example: Set for March 5, 1996 at 08:05am
+         * ticks = 0x2065;
+         *  (year  = 1996-1980 = 16 = 0x10,  0x0010 << 9 = 0x2000;
+         *   month = 3,                      0x0003 << 5 = 0x0060;
+         *   day   = 5,                      0x0005 << 0 = 0x0005)
+         * interval = 0x0805;
+         *  (hours   = 8 (24-hour time)      0x0008 << 8 = 0x0800;
+         *   minutes = 5                     0x0005 << 0 = 0x0005)
+         * 12am is 0, while 12pm is 12
+         *
+         * Set the alarm time by getting the user set time
+         * from the TimeInput object.
+         * If the alarm hour is past the current hour,
+         * set alarm for today. If the alarm hour is
+         * before the current hour, set alarm for tomorrow.
+         */
+      @call ACAlarmTimeInput::MSG_TIME_INPUT_GET_TIME( &uAlarmTime );
+      TimerGetDateAndTime( &uCurDate );
+      if ( uAlarmTime.TP_hours < uCurDate.TDAT_hours ) {
+          uCurDate.TDAT_day++;
+      }
+      else {
+          if ( ( uAlarmTime.TP_hours == uCurDate.TDAT_hours ) &&
+               ( uAlarmTime.TP_minutes <= uCurDate.TDAT_minutes ) ) {
+              uCurDate.TDAT_day++;
+          }
+      }
+      if ( uCurDate.TDAT_day >
+           LocalCalcDaysInMonth( uCurDate.TDAT_year,
+                                 uCurDate.TDAT_month ) ) {
+          uCurDate.TDAT_month++;
+          uCurDate.TDAT_day = 1;
+          if ( uCurDate.TDAT_month > 12 ) {
+              uCurDate.TDAT_year++;
+              uCurDate.TDAT_month = 1;
+          }
+      }
+      cTicks = ( uCurDate.TDAT_year - 1980 ) << 9;
+      cTicks |= uCurDate.TDAT_month << 5;
+      cTicks |= uCurDate.TDAT_day;
+         /*
+          * Set the real-time event. This will send a message
+          * to the process object, that way the UI thread is free
+          * to receive any input messages while the alarm
+          * is sounding off.
+          */
+      strcpy( ourGeodeToken.GT_chars, "ALRM" );
+      ourGeodeToken.GT_manufID = 16426;
+      if ( RTCMRegisterEvent( cTicks, uAlarmTime.TP_hours,
+                              uAlarmTime.TP_minutes,
+                              MSG_AC_PROCESS_ALARM_SOUND_OFF,
+                              RTCMGLM_APPLICATION,
+                              ourGeodeToken,
+                              (char*)0,
+                              &ACRTCMeventToken_g,
+                              &ACRTCMeventID_g ) != RTCME_OK ) {
+          UserStandardDialog( (char*)0, (char*)0, (char*)0, (char*)0,
+              "Could not register RTCM event.",
+              ( CDT_ERROR << CDBF_DIALOG_TYPE_OFFSET ) |
+              ( GIT_NOTIFICATION << CDBF_INTERACTION_TYPE_OFFSET ) );
+      }
+    }
+} /* MSG_AC_PROCESS_ALARM_SET_OR_RESET */
+
+/********************************************************************
+ *              MSG_AC_PROCESS_ALARM_SOUND_OFF
+ ********************************************************************
+ * SYNOPSIS:     Make the alarm sound because the alarm has gone
+ *               off.
+ * PARAMETERS:   unsigned int eventToken
+ *               unsigned int eventID
+ *               Boolean      expired
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Nothing to check.
+ * STRATEGY:     Sound off the alarm until the user either hits
+ *               the space bar or turns off the alarm. If they hit the
+ *               snooze bar, set an alarm for five minutes from now
+ *               for the one-shot alarm, or set the alarm for the
+ *               alarm time tomorrow, if repeating.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/3/96          Initial version
+ *******************************************************************/
+@extern method ACProcessClass, MSG_AC_PROCESS_ALARM_SOUND_OFF {
+      /*
+       * uCurDate      - Today's date and time, used to set snooze alarm.
+       * cTicks,
+       * cInterval     - Used to set real-time event timer.
+       * ourGeodeToken - GeodeToken for nalarm.
+       */
+    TimerDateAndTime uCurDate;
+    word             cTicks;
+    word             cInterval;
+    GeodeToken       ourGeodeToken;
+
+      /*
+       * Tell application object to save characters
+       * pressed by the user. Set the last saved character
+       * to a non-space. Wait for the user to either press
+       * the space bar or reset the alarm. Meanwhile, play
+       * a standard notification sound every 3/4ths of a second.
+       * (OmniGo will shut off if alarm not stopped.)
+       */
+    ACSaveCharacters_g = TRUE;
+    ACLastCharacter_g = 'a';
+    while ( ( ' ' != ACLastCharacter_g ) &&
+            ( AOO_ON == @call ACAlarmOnOffBooleanGroup::
+                  MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS() ) ) {
+        UserStandardSound( SST_NOTIFY );
+        TimerSleep( 45 );
+    }
+    if ( ' ' == ACLastCharacter_g ) {
+        if ( AT_ONE_SHOT == @call ACAlarmSetItemGroup::
+                 MSG_GEN_ITEM_GROUP_GET_SELECTION() ) {
+              /*
+               * User pressed the "snooze" bar. Set alarm for five
+               * minutes from now. To add five minutes to the current
+               * time means making sure we don't overflow any
+               * standard units of time, such as minutes,
+               * hours, days, and months.
+               */
+            TimerGetDateAndTime( &uCurDate );
+            uCurDate.TDAT_minutes += 5;
+            if ( uCurDate.TDAT_minutes > 59 ) {
+                uCurDate.TDAT_hours++;
+                uCurDate.TDAT_minutes -= 60;
+                if ( uCurDate.TDAT_hours > 23 ) {
+                    uCurDate.TDAT_day++;
+                    uCurDate.TDAT_hours = 0;
+                    if ( uCurDate.TDAT_day >
+                         LocalCalcDaysInMonth( uCurDate.TDAT_year,
+                                               uCurDate.TDAT_month ) ) {
+                        uCurDate.TDAT_month++;
+                        uCurDate.TDAT_day = 1;
+                        if ( uCurDate.TDAT_month > 12 ) {
+                            uCurDate.TDAT_year++;
+                            uCurDate.TDAT_month = 1;
+                        }
+                    }
+                }
+            }
+            cTicks = ( ( uCurDate.TDAT_year - 1980 ) << 9 ) |
+                      ( uCurDate.TDAT_month << 5 ) |
+                      uCurDate.TDAT_day;
+            cInterval = ( uCurDate.TDAT_hours << 8 ) |
+                       uCurDate.TDAT_minutes;
+              /*
+               * Set snooze alarm.
+               */
+            strcpy( ourGeodeToken.GT_chars, "ALRM" );
+            ourGeodeToken.GT_manufID = 16426;
+            if ( RTCMRegisterEvent( cTicks,
+                                    (word)( cInterval >> 8 ),
+                                    (word)( cInterval & 0x00ff ),
+                                    MSG_AC_PROCESS_ALARM_SOUND_OFF,
+                                    RTCMGLM_APPLICATION,
+                                    ourGeodeToken,
+                                    (char*)0,
+                                    &ACRTCMeventToken_g,
+                                    &ACRTCMeventID_g ) != RTCME_OK ) {
+                UserStandardDialog( (char*)0, (char*)0, (char*)0, (char*)0,
+                    "Could not register RTCM event.",
+                    ( CDT_ERROR << CDBF_DIALOG_TYPE_OFFSET ) |
+                    ( GIT_NOTIFICATION << CDBF_INTERACTION_TYPE_OFFSET ) );
+            }
+        }
+        else {
+              /*
+               * It's a repeating alarm. Set it to go off
+               * again in 24 hours.
+               */
+            @send self::MSG_AC_PROCESS_ALARM_SET_OR_RESET( 0, 0, 0 );
+        }
+    }
+      /*
+       * User turned off alarm. We're done.
+       */
+    else {
+        ACRTCMeventToken_g = 0;
+    }
+    ACSaveCharacters_g = FALSE;
+} /* MSG_AC_PROCESS_ALARM_SOUND_OFF */
+
+/********************************************************************
+ *              MSG_AC_PROCESS_ALARM_TIME_CHANGED
+ ********************************************************************
+ * SYNOPSIS:     Send the status message of the AlarmItemGroup so
+ *               that the alarm will get set to the new time.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Nothing to check.
+ * STRATEGY:     Tell the AlarmItemGroup to send its status message
+ *               to its output object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/6/96          Initial version
+ *******************************************************************/
+@extern method ACProcessClass, MSG_AC_PROCESS_ALARM_TIME_CHANGED {
+
+    @send self::MSG_AC_PROCESS_ALARM_SET_OR_RESET( 0, 0, 0 );
+} /* MSG_AC_PROCESS_ALARM_TIME_CHANGED */
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_CLOSE_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Stop the running timers.
+ * PARAMETERS:   void
+ * RETURNS:      MemHandle
+ * SIDE EFFECTS: none
+ * CHECKS:       Nothing to check.
+ * STRATEGY:     Call TimerStop twice, once to stop the current
+ *               time display timer and again to stop the alarm
+ *               timer. This means the user cannot expect the alarm
+ *               to go off if s/he exits the application.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *******************************************************************/
+@extern method ACProcessClass, MSG_GEN_PROCESS_CLOSE_APPLICATION {
+      /*
+       * mhMsgBlock,
+       * pMessage    - Reminder message to be saved to .INI file.
+       */
+    MemHandle mhMsgBlock;
+    char *    pMessage;
+
+      /*
+       * Stop the two timers we were using, then wait for a
+       * second to make sure the timer messages still in the
+       * ui thread's queue are processed.
+       */
+    TimerStop( ACCurTimeHandle_g, ACCurTimeTimerID_g );
+    TimerSleep( 61 );
+
+      /*
+       * Write out some global variables and boolean
+       * states to the GEOS.INI file so we can check later.
+       */
+    if ( AOO_ON == @call ACAlarmOnOffBooleanGroup::
+             MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS() ) {
+        InitFileWriteBoolean( AC_INIT_FILE_CATEGORY, "alarmSet", TRUE );
+        InitFileWriteInteger( AC_INIT_FILE_CATEGORY,
+                              "eventToken", ACRTCMeventToken_g );
+        InitFileWriteInteger( AC_INIT_FILE_CATEGORY,
+                              "eventID", ACRTCMeventID_g );
+        mhMsgBlock = @call ACMessageText::MSG_VIS_TEXT_GET_ALL_BLOCK(
+                                              NullHandle );
+EC(     ECCheckMemHandle( mhMsgBlock ); )
+        pMessage = MemLock( mhMsgBlock );
+EC(     ECCheckBounds( pMessage ); )
+        InitFileWriteString( AC_INIT_FILE_CATEGORY, "eventMsg",
+                             pMessage );
+        MemFree( mhMsgBlock );
+        mhMsgBlock = NullHandle;
+    }
+    else {
+        InitFileWriteBoolean( AC_INIT_FILE_CATEGORY, "alarmSet", FALSE );
+        InitFileDeleteEntry( AC_INIT_FILE_CATEGORY, "eventToken" );
+        InitFileDeleteEntry( AC_INIT_FILE_CATEGORY, "eventID" );
+        InitFileDeleteEntry( AC_INIT_FILE_CATEGORY, "eventMsg" );
+    }
+    InitFileSave();
+
+    return( @callsuper() );
+} /* MSG_GEN_PROCESS_CLOSE_APPLICATION */
+

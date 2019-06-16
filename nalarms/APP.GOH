@@ -1,0 +1,54 @@
+/********************************************************************
+ *
+ * PROJECT:     Alarm Clock
+ * MODULE:      Application Header File
+ * FILE:        app.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *
+ * DESCRIPTION:
+ *      This contains the constants, structures, and classes for
+ *      the Alarm Clock program.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Constants
+ *******************************************************************/
+       /* AlarmType flags */
+    #define AT_ONE_SHOT  1
+    #define AT_REPEATING 2
+
+       /* AlarmOnOff flags */
+    #define AOO_ON 0x8000
+
+       /* GEOS.INI file category. */
+    #define AC_INIT_FILE_CATEGORY "BMS AlarmClock"
+
+/********************************************************************
+ *              Data Types
+ *******************************************************************/
+
+/********************************************************************
+ *              Class Definitions
+ *******************************************************************/
+    @class ACProcessClass, GenProcessClass;
+      /* Set or clear the alarm. */
+    @message (GEN_ITEM_GROUP_APPLY_MSG)
+                 MSG_AC_PROCESS_ALARM_SET_OR_RESET;
+      /* Sound off the alarm. */
+    @message (RTCM_EVENT_MSG)MSG_AC_PROCESS_ALARM_SOUND_OFF;
+      /* Notify alarm that time setting has changed. */
+    @message void MSG_AC_PROCESS_ALARM_TIME_CHANGED();
+    @endc;
+
+    @class ACApplicationClass, GenApplicationClass;
+      /* Display the current time in the time text object. */
+    @message void MSG_AC_APPLICATION_DISPLAY_CURRENT_TIME();
+    @endc;
+

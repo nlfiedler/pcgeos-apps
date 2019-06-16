@@ -1,0 +1,386 @@
+/********************************************************************
+ *
+ * PROJECT:     Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:      Directory Object Methods
+ * FILE:        dir.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/2/96          Initial version
+ *
+ * DESCRIPTION:
+ *      These are the function definitions and method definitions
+ *      for the directory object.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Internal/Jedi/jtable.goh>
+    #include <Ansi/string.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              DirSearchTable
+ ********************************************************************
+ * SYNOPSIS:	 Searches the table cell data to match the passed
+ *		 text.  (Does case insensitive search because that
+ *		 is the standard for OmniGo.)
+ * CALLED BY:	 MSG_TABLE_STRING_LOCATE
+ *               MSG_TABLE_CHAR_LOCATE
+ * RETURN:	 TRUE if no match found; FALSE if match was found
+ * SIDE EFFECTS: none
+ * STRATEGY:     - Set the array index to correspond to the currently
+ *                 selected cell in the table.
+ *		 - Search through chunk array from set index to end
+ *                 until a match is found or the end of the array
+ *                 is reached.
+ *               - If end of array was reached, then set the selected
+ *                 cell back to the original, so it will beep, but
+ *                 not move.
+ *               - Otherwise set the selected cell to the index of
+ *                 the new selection.
+ * NOTES:        Helps if data is in sorted order. Doesn't have
+ *               to be though.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      3/13/95         Initial version
+ *      NF      9/2/96          Changed for FM
+ *******************************************************************/
+Boolean _pascal
+DirSearchTable( char *           searchText,
+                word             textLen,
+                TableCellRange * selection,
+                word             tableRows )
+  /*
+   * searchText - Text string to search for.
+   * textLen    - Length of searchText.
+   * selection  - Selected range of cells.
+   * tableRows  - Number of rows in table.
+   */
+{
+      /*
+       * pItem     - Current item being scanned.
+       * iOriginal - Where we started.
+       * iCurrent  - Where we are looking now.
+       * cElemSize - Size of element.
+       * bNotFound - TRUE if string not found.
+       */
+    ItemType * pItem;
+    word       iOriginal;
+    word       iCurrent;
+    word       cElemSize;
+    Boolean    bNotFound;
+
+      /*
+       * If nothing currently selected (signified by -1),
+       * then start at the first row.
+       */
+    if ( 0xFFFF == selection->TCR_start.TCL_row ) {
+	iOriginal = 0;
+    }
+    else {
+	iOriginal = selection->TCR_start.TCL_row;
+    }
+    iCurrent = iOriginal;
+
+      /*
+       * Do search. We'll first have to dereference the
+       * current cell. Perform the comparison and save
+       * the result temporarily. Bump the index to the next cell.
+       * Loop as long as we haven't found a match and we
+       * haven't reached the end of the array.
+       */
+    bNotFound = TRUE;
+    MemLock( OptrToHandle( @FMItems ) );
+    do {
+	pItem = ChunkArrayElementToPtr( @FMItems, iCurrent, &cElemSize );
+EC(     ECCheckBounds( pItem ); )
+        bNotFound = LocalCmpStringsNoCase( pItem->IT_name,
+                                           searchText, textLen );
+        iCurrent++;
+    } while ( bNotFound && ( iCurrent < tableRows ) );
+    MemUnlock( OptrToHandle( @FMItems ) );
+
+      /*
+       * Select the cell if it was found, otherwise
+       * leave selection alone and make a beeping noise.
+       */
+    selection->TCR_start.TCL_column = 1;
+    selection->TCR_end.TCL_column = 1;
+    if ( bNotFound ) {
+          /*
+           * If unsuccessful, then keep selection at current cell
+           * (or if no previous selection, then select cell 0,0).
+           */
+	selection->TCR_start.TCL_row = iOriginal;
+	selection->TCR_end.TCL_row = iOriginal;
+	return( TRUE );
+    }
+    else {
+          /*
+           * If successful, then set selection at new cell.
+           * Have to first backup the index, which will be
+           * off by one row.
+           */
+        iCurrent--;
+	selection->TCR_start.TCL_row = iCurrent;
+	selection->TCR_end.TCL_row = iCurrent;
+	return( FALSE );
+    }
+} /* DirSearchTable */
+
+/********************************************************************
+ *              Code for FMDirectoryClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_TABLE_QUERY_DRAW
+ ********************************************************************
+ * SYNOPSIS:     The table wants us to draw some part of the table.
+ * PARAMETERS:   TableCellLocation location
+ *               GStateHandle      gstate
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the corresponding element in the chunk array
+ *               and draw its data in the cell.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/2/95          Initial version
+ *******************************************************************/
+@extern method FMDirectoryClass, MSG_TABLE_QUERY_DRAW {
+      /*
+       * pItem      - Item being redrawn.
+       * cElemSize  - Size of item being redrawn.
+       * acrWorkBuf - Used to convert numbers to strings.
+       */
+    ItemType * pItem;
+    word       cElemSize;
+    char       acrWorkBuf[15];
+
+    MemLock( OptrToHandle( @FMItems ) );
+EC( ECCheckChunkArray( @FMItems ); )
+      /*
+       * Draw date of the item in first column.
+       */
+    if ( 0 == location.TCL_column ) {
+        pItem = ChunkArrayElementToPtr( @FMItems, location.TCL_row,
+                                        &cElemSize );
+EC(     ECCheckBounds( pItem ); )
+        UtilHex32ToAscii( acrWorkBuf,
+            FDATExtractYearAD( pItem->IT_date ), UHTAF_NULL_TERMINATE );
+          /*
+           * Get the last two digits of the year.
+           */
+        GrDrawTextAtCP( gstate,
+            ( acrWorkBuf + strlen( acrWorkBuf ) - 2 ), 0 );
+        GrDrawTextAtCP( gstate, "/", 0 );
+        UtilHex32ToAscii( acrWorkBuf,
+            FDATExtractMonth( pItem->IT_date ), UHTAF_NULL_TERMINATE );
+        GrDrawTextAtCP( gstate, acrWorkBuf, 0 );
+        GrDrawTextAtCP( gstate, "/", 0 );
+        UtilHex32ToAscii( acrWorkBuf, FDATExtractDay( pItem->IT_date ),
+            UHTAF_NULL_TERMINATE );
+        GrDrawTextAtCP( gstate, acrWorkBuf, 0 );
+    }
+      /*
+       * Draw name of the item in second column.
+       */
+    if ( 1 == location.TCL_column ) {
+        pItem = ChunkArrayElementToPtr( @FMItems, location.TCL_row,
+                                        &cElemSize );
+EC(     ECCheckBounds( pItem ); )
+        if ( pItem->IT_flags & IF_SELECTED ) {
+              /*
+               * If selected, make text white.
+               * Draw a black background.
+               */
+            GrSetAreaColor( gstate, CF_INDEX, C_BLACK, 0, 0 );
+            GrSaveState( gstate );
+            GrFillRectTo( gstate, MAX_COORD, MAX_COORD );
+            GrRestoreState( gstate );
+            GrSetTextColor( gstate, CF_INDEX, C_WHITE, 0, 0 );
+        }
+        else {
+              /*
+               * If not selected, make text black.
+               */
+            GrSetTextColor( gstate, CF_INDEX, C_BLACK, 0, 0 );
+        }
+        GrDrawTextAtCP( gstate, pItem->IT_name, 0 );
+    }
+      /*
+       * Draw size of the item in third column.
+       */
+    if ( 2 == location.TCL_column ) {
+        pItem = ChunkArrayElementToPtr( @FMItems, location.TCL_row,
+                                        &cElemSize );
+EC(     ECCheckBounds( pItem ); )
+        if ( pItem->IT_flags & IF_DIRECTORY ) {
+            GrDrawTextAtCP( gstate, "  DIR", 0 );
+        }
+        else {
+            UtilHex32ToAscii( acrWorkBuf, pItem->IT_size,
+                              UHTAF_NULL_TERMINATE );
+            GrDrawTextAtCP( gstate, acrWorkBuf, 0 );
+            GrDrawTextAtCP( gstate, "K", 0 );
+        }
+    }
+    MemUnlock( OptrToHandle( @FMItems ) );
+} /* MSG_TABLE_QUERY_DRAW */
+
+/********************************************************************
+ *		MSG_TABLE_SELECT
+ ********************************************************************
+ * SYNOPSIS:	 User clicked on an item in the table.
+ * PARAMETERS:	 TableCellLocation location
+ *               TableColumnFlags  tableColumnFlags
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Toggle the selected flag of the corresponding
+ *               item. Force the cell to be redrawn.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/2/96          Initial version
+ *******************************************************************/
+@extern method FMDirectoryClass, MSG_TABLE_SELECT {
+      /*
+       * pItem     - Item being redrawn.
+       * cElemSize - Size of item being redrawn.
+       */
+    ItemType * pItem;
+    word       cElemSize;
+
+      /*
+       * Lock the directory array.
+       * Flip the selection bit for this item.
+       * Redraw the cell.
+       * Call the superclass.
+       */
+    MemLock( OptrToHandle( @FMItems ) );
+EC( ECCheckChunkArray( @FMItems ); )
+    pItem = ChunkArrayElementToPtr( @FMItems, location.TCL_row,
+                                    &cElemSize );
+EC( ECCheckBounds( pItem ); )
+    if ( pItem->IT_flags & IF_SELECTED ) {
+        pItem->IT_flags &= ~IF_SELECTED;
+    }
+    else {
+        pItem->IT_flags |= IF_SELECTED;
+    }
+    MemUnlock( OptrToHandle( @FMItems ) );
+    @send FMDirectory::MSG_TABLE_REDRAW_CELL( location );
+} /*  MSG_TABLE_SELECT */
+
+/********************************************************************
+ *		MSG_TABLE_STRING_LOCATE
+ ********************************************************************
+ * SYNOPSIS:	 This method is subclassed so we can perform a
+ *               search of the data for this table. String search
+ *               is done when the locator is in string mode (user
+ *               is entering text via keyboard).
+ * PARAMETERS:	 char * text
+ * RETURNS:      Boolean - FALSE = match found; TRUE = no match
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the selected range of cells. Call the search
+ *               routine with the passed text string, the selected
+ *               range, and the number of rows in the table.
+ *               If the result is good, set the selection to the
+ *               row found.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      3/13/95         Initial version
+ *      NF      9/2/96          Changed to FM
+ *******************************************************************/
+@extern method FMDirectoryClass, MSG_TABLE_STRING_LOCATE {
+      /*
+       * sSelection    - Currently selected range of cells.
+       * bSearchResult - FALSE if match is found.
+       * sLocation     - Location of selected cell.
+       */
+    TableCellRange    sSelection;
+    Boolean           bSearchResult;
+    TableCellLocation sLocation;
+
+      /*
+       * Get currently selected cell, so we can
+       * start the search from current location.
+       */
+    @call self::MSG_TABLE_GET_CURRENT_SELECTION( &sSelection );
+    bSearchResult = DirSearchTable( text, strlen( text ), &sSelection,
+                                    pself->TI_rows );
+    if ( FALSE == bSearchResult ) {
+        @call process::MSG_FMP_UNSELECT_ALL_ITEMS();
+        sLocation.TCL_row = sSelection.TCR_start.TCL_row;
+        sLocation.TCL_column = 1;
+        @send self::MSG_TABLE_SELECT( sLocation, COL_FLAG_DEFS_2 );
+        @send self::MSG_TABLE_SCROLL_TO_ROW(
+            sSelection.TCR_start.TCL_row );
+    }
+    return( bSearchResult );
+} /* MSG_TABLE_STRING_LOCATE */
+
+/********************************************************************
+ *		MSG_TABLE_CHAR_LOCATE
+ ********************************************************************
+ * SYNOPSIS:	 This method is subclassed so we can perform a
+ *		 search of the data for this table.  Char search
+ *		 is done when the locator is in "index" mode
+ *		 (user is selecting dual-letter triggers).
+ * PARAMETERS:   char searchChar
+ * RETURN:	 Boolean - FALSE = match found; TRUE = no match
+ * SIDE EFFECTS: none
+ * STRATEGY:     Set the selection to the first row, then perform
+ *               the search. If the result is good, set the
+ *               selection to what was found.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      3/13/95         Initial version
+ *      NF      9/2/96          Changed to FM
+ *******************************************************************/
+@extern method FMDirectoryClass, MSG_TABLE_CHAR_LOCATE {
+      /*
+       * sSelection    - Currently selected range of cells.
+       * bSearchResult - FALSE if match is found.
+       * sLocation     - Location of selected cell.
+       */
+    TableCellRange    sSelection;
+    Boolean           bSearchResult;
+    TableCellLocation sLocation;
+
+      /*
+       * We always want to start from the beginning
+       * in these searches, so set selection to zero.
+       */
+    sSelection.TCR_start.TCL_row = 0;
+    sSelection.TCR_start.TCL_column = 0;
+    sSelection.TCR_end.TCL_row = 0;
+    sSelection.TCR_end.TCL_column = 0;
+    bSearchResult = DirSearchTable( &searchChar, 1, &sSelection,
+                                    pself->TI_rows );
+    if ( FALSE == bSearchResult ) {
+        @call process::MSG_FMP_UNSELECT_ALL_ITEMS();
+        sLocation.TCL_row = sSelection.TCR_start.TCL_row;
+        sLocation.TCL_column = 1;
+        @send self::MSG_TABLE_SELECT( sLocation, COL_FLAG_DEFS_2 );
+        @send self::MSG_TABLE_SCROLL_TO_ROW(
+            sSelection.TCR_start.TCL_row );
+    }
+    return( bSearchResult );
+} /* MSG_TABLE_CHAR_LOCATE */
+

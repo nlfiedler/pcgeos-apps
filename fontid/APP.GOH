@@ -1,0 +1,43 @@
+/********************************************************************
+ *
+ * PROJECT:     Change Sys Font
+ * MODULE:      Application Header File
+ * FILE:        app.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/18/96         Initial version
+ *
+ * DESCRIPTION:
+ *      This contains the constants, structures, and classes for
+ *      the FontID program.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Constants
+ *******************************************************************/
+      /* Item group identifiers. */
+    #define FONT_JSYS     1
+    #define FONT_CALENDAR 2
+    #define FONT_NOTEPAD  3
+    #define FONT_SANS     4
+    #define FONT_MONO     5
+
+/********************************************************************
+ *              Data Types
+ *******************************************************************/
+
+/********************************************************************
+ *              Class Definitions
+ *******************************************************************/
+    @class FIDProcessClass, GenProcessClass;
+      /* Set the font for the GenText. */
+    @message (GEN_ITEM_GROUP_APPLY_MSG)MSG_FIDP_SET_FONT_ID;
+      /* Saves the font info to the INI file. */
+    @message void MSG_FIDP_SAVE_FONT_INFO();
+    @endc;
+

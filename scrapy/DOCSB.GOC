@@ -1,0 +1,382 @@
+/********************************************************************
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Document/MSG_SB_DOCUMENT Methods
+ * FILE:        docsb.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/8/95          Initial version
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file contains the document methods for the
+ *      SBDocument subclass.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/vltextc.goh>
+    #include <ansi/string.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Code for SBDocumentClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_SB_DOCUMENT_ADD_ITEM
+ ********************************************************************
+ * SYNOPSIS:     Show that an item has been pasted into the scrap-
+ *               book by incrementing the number of items.
+ * PARAMETERS:   VMBlockHandle         vmBlock_p
+ *               ClipboardItemHeader * itemPtr_p
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Increment the number of items, add the new block
+ *               to the map block.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/14/95         Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_ADD_ITEM {
+      /*
+       * vmhMapBlock - VM file's map block.
+       * mhMapBlock  - VM file's map block in memory.
+       * pMapBlock   - Pointer to map block.
+       * iCurItem    - Used in for loop.
+       * pNewItem    - New item being added.
+       * cElemSize   - Used in ChunkArray.
+       */
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhMapBlock;
+    SBMapBlock *  pMapBlock;
+    ItemIndexType iCurItem;
+    SBItemEntry * pNewItem;
+    word          cElemSize;
+
+      /*
+       * Increment number of items.
+       */
+    pself = ObjDerefGen( oself );
+    pself->SBDI_cNumItems++;
+EC( ECVMCheckVMFile( pself->GDI_fileHandle ); )
+    vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+    pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock, &mhMapBlock );
+EC( ECCheckMemHandle( mhMapBlock ); )
+EC( ECCheckBounds( pMapBlock ); )
+
+      /*
+       * Insert new item into item info table.
+       * Copy the information into the new entry.
+       * Dirty and unlock the table.
+       */
+    pNewItem = ChunkArrayElementToPtrHandles( mhMapBlock,
+        pMapBlock->SBMB_chaItemInfo, pself->SBDI_iCurItem, &cElemSize );
+EC( ECCheckBounds( pNewItem ); )
+    pNewItem = ChunkArrayInsertAtHandle( pMapBlock->SBMB_chaItemInfo,
+                                         pNewItem, 0 );
+EC( ECCheckBounds( pNewItem ); )
+    pNewItem->SBIH_vmh = vmBlock_p;
+    strncpy( pNewItem->SBIH_acrName, itemPtr_p->CIH_name,
+             CLIPBOARD_ITEM_NAME_LENGTH );
+    VMDirty( mhMapBlock );
+    VMUnlock( mhMapBlock );
+} /* MSG_SB_DOCUMENT_ADD_ITEM */
+
+/********************************************************************
+ *              MSG_SB_DOCUMENT_DISPLAY_ITEM
+ ********************************************************************
+ * SYNOPSIS:     Display the current item.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Use the file handle and item block handle to call
+ *               MSG_VIS_TEXT_REPLACE_WITH_TEXT_TRANSFER_FORMAT.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/14/95         Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_DISPLAY_ITEM {
+      /*
+       * odDupText   - Pointer to duplicate text object.
+       * vmhMapBlock - VM file's map block.
+       * mhMapBlock  - VM file's map block in memory.
+       * pMapBlock   - Pointer to map block.
+       * pItemEntry  - Entry of item being displayed.
+       * cElemSize   - Used by ChunkArray.
+       */
+    optr          odDupText;
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhMapBlock;
+    SBMapBlock *  pMapBlock;
+    SBItemEntry * pItemEntry;
+    word          cElemSize;
+
+    pself = ObjDerefGen( oself );
+    if ( pself->SBDI_cNumItems > 0 ) {
+
+          /*
+           * Get pointer to the current item entry.
+           */
+EC(     ECVMCheckVMFile( pself->GDI_fileHandle ); )
+        vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC(     ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+        pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock,
+            &mhMapBlock );
+EC(     ECCheckMemHandle( mhMapBlock ); )
+EC(     ECCheckBounds( pMapBlock ); )
+        pItemEntry = ChunkArrayElementToPtrHandles( mhMapBlock,
+            pMapBlock->SBMB_chaItemInfo, pself->SBDI_iCurItem,
+            &cElemSize );
+EC(     ECCheckBounds( pItemEntry ); )
+EC(     ECVMCheckVMBlockHandle( pself->GDI_fileHandle, \
+            pItemEntry->SBIH_vmh ); )
+
+          /*
+           * Replace the current text with this new text.
+           */
+        odDupText = ConstructOptr( pself->SBDI_mhText,
+                                   OptrToChunk( @SBText ) );
+EC(     ECCheckLMemOD( odDupText ); )
+        @call odDupText::MSG_VIS_TEXT_REPLACE_WITH_TEXT_TRANSFER_FORMAT(
+            pItemEntry->SBIH_vmh, pself->GDI_fileHandle,
+            0, TEXT_ADDRESS_PAST_END, 0 );
+        @send SBItemNameText::MSG_VIS_TEXT_REPLACE_ALL_PTR(
+            pItemEntry->SBIH_acrName, 0 );
+        VMUnlock( mhMapBlock );
+    }
+    else {
+          /* No items to display, make sure VisText is clear. */
+        @send SBItemNameText::MSG_VIS_TEXT_DELETE_ALL();
+    }
+} /* MSG_SB_DOCUMENT_DISPLAY_ITEM */
+
+/********************************************************************
+ *              MSG_SB_DOCUMENT_SET_ITEM_NAME
+ ********************************************************************
+ * SYNOPSIS:     Set the name of the current item to the one in
+ *               the GenText object.
+ * CALLED BY:    SBItemNameText
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the map block, then call the GenText object
+ *               to retrieve it's contents. Store that in the
+ *               map block.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/17/95         Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_SET_ITEM_NAME {
+      /*
+       * vmhMapBlock - VM file's map block.
+       * mhMapBlock  - VM file's map block in memory.
+       * pMapBlock   - Pointer to map block.
+       * pItemEntry  - Item entry being set.
+       * cElemSize   - Used by ChunkArray.
+       */
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhMapBlock;
+    SBMapBlock *  pMapBlock;
+    SBItemEntry * pItemEntry;
+    word          cElemSize;
+
+    pself = ObjDerefGen( oself );
+    if ( pself->SBDI_cNumItems > 0 ) {
+EC(     ECVMCheckVMFile( pself->GDI_fileHandle ); )
+        vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC(     ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+        pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock,
+                            &mhMapBlock );
+EC(     ECCheckMemHandle( mhMapBlock ); )
+EC(     ECCheckBounds( pMapBlock ); )
+        pItemEntry = ChunkArrayElementToPtrHandles( mhMapBlock,
+            pMapBlock->SBMB_chaItemInfo, pself->SBDI_iCurItem,
+            &cElemSize );
+        @send SBItemNameText::MSG_VIS_TEXT_GET_ALL_PTR(
+            pItemEntry->SBIH_acrName );
+        @call SBGotoItemList::MSG_GEN_DYNAMIC_LIST_REPLACE_ITEM_TEXT(
+            pself->SBDI_iCurItem, pItemEntry->SBIH_acrName );
+        VMDirty( mhMapBlock );
+        VMUnlock( mhMapBlock );
+    }
+} /* MSG_SB_DOCUMENT_SET_ITEM_NAME */
+
+/********************************************************************
+ *              MSG_SB_DOCUMENT_PREV_ITEM
+ ********************************************************************
+ * SYNOPSIS:     Backup to the previous item.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Decrement the curItem pointer, wrapping to the
+ *               end if we go past the first item. Call DisplayItem.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/15/95         Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_PREV_ITEM {
+
+    pself = ObjDerefGen( oself );
+    if ( pself->SBDI_iCurItem == 0 ) {
+        pself->SBDI_iCurItem = ( pself->SBDI_cNumItems - 1 );
+    }
+    else {
+        pself->SBDI_iCurItem -= 1;
+    }
+    @send self::MSG_SB_DOCUMENT_DISPLAY_ITEM();
+} /* MSG_SB_DOCUMENT_PREV_ITEM */
+
+/********************************************************************
+ *              MSG_SB_DOCUMENT_NEXT_ITEM
+ ********************************************************************
+ * SYNOPSIS:     Advance to the next item.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Increment the curItem pointer, wrapping to the
+ *               beginning if we go past the last item.
+ *               Call DisplayItem routine.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/15/95         Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_NEXT_ITEM {
+
+    pself = ObjDerefGen( oself );
+    if ( pself->SBDI_iCurItem >= ( pself->SBDI_cNumItems - 1 ) ) {
+        pself->SBDI_iCurItem = 0;
+    }
+    else {
+        pself->SBDI_iCurItem += 1;
+    }
+    @send self::MSG_SB_DOCUMENT_DISPLAY_ITEM();
+} /* MSG_SB_DOCUMENT_NEXT_ITEM */
+
+/********************************************************************
+ *              MSG_SB_DOCUMENT_GOTO_ITEM
+ ********************************************************************
+ * SYNOPSIS:     Goto a specific item.
+ * PARAMETERS:   ItemIndexType item_p
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check the item value and then change curItem to
+ *               that new number. Fix the number if it is invalid.
+ *               Call DisplayItem routine.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/16/95         Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_GOTO_ITEM {
+
+    pself = ObjDerefGen( oself );
+    if ( item_p < pself->SBDI_cNumItems ) {
+        pself->SBDI_iCurItem = item_p;
+    }
+    else {
+          /* Number too big. */
+        pself->SBDI_iCurItem = pself->SBDI_cNumItems - 1;
+    }
+    @send self::MSG_SB_DOCUMENT_DISPLAY_ITEM();
+} /* MSG_SB_DOCUMENT_GOTO_ITEM */
+
+/********************************************************************
+ *              MSG_SB_DOCUMENT_LIST_APPLY
+ ********************************************************************
+ * SYNOPSIS:     Goto the item selected by the user.
+ * PARAMETERS:   word selection
+ *               word numSelections
+ *               word flags
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call GotoItem routine.
+ * REVISION HISTORY:
+ *      Name   Date      Description
+ *      ----   ----      -----------
+ *       NF    08/16/95  Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_LIST_APPLY {
+
+  @send self::MSG_SB_DOCUMENT_GOTO_ITEM( selection );
+} /* MSG_SB_DOCUMENT_LIST_APPLY */
+
+/********************************************************************
+ *       MSG_SB_DOCUMENT_LIST_MONIKER_QUERY
+ ********************************************************************
+ * SYNOPSIS:     The dynamic list wants a name for an item.
+ * PARAMETERS:   optr list
+ *               word item
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the map block and retrieve the name of the
+ *               item requested.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       NF     8/16/95         Initial version
+ *******************************************************************/
+@extern method SBDocumentClass, MSG_SB_DOCUMENT_LIST_MONIKER_QUERY {
+      /*
+       * vmhMapBlock - VM block handle of map block.
+       * mhMapBlock  - Mem handle of map block.
+       * pMapBlock   - Pointer to map block.
+       * pItemEntry  - Item entry being queried.
+       * cElemSize   - Used by ChunkArray.
+       */
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhMapBlock;
+    SBMapBlock *  pMapBlock;
+    SBItemEntry * pItemEntry;
+    word          cElemSize;
+
+      /*
+       * Get the map block and lock it down.
+       * Call the dynamic list object with the item's name.
+       * Unlock the block.
+       */
+    pself = ObjDerefGen( oself );
+EC( ECVMCheckVMFile( pself->GDI_fileHandle ); )
+    vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+    pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock, &mhMapBlock );
+EC( ECCheckMemHandle( mhMapBlock ); )
+EC( ECCheckBounds( pMapBlock ); )
+EC( ECCheckLMemOD( list ); )
+    pItemEntry = ChunkArrayElementToPtrHandles( mhMapBlock,
+        pMapBlock->SBMB_chaItemInfo, item, &cElemSize );
+    @call list::MSG_GEN_DYNAMIC_LIST_REPLACE_ITEM_TEXT( item,
+        pItemEntry->SBIH_acrName );
+    VMUnlock( mhMapBlock );
+} /* MSG_SB_DOCUMENT_LIST_MONIKER_QUERY */
+

@@ -1,0 +1,25 @@
+Scrapy Copy/Paste
+=================
+Created: 8/11/96
+Updated: 8/18/96
+
+Copy
+----
+MSG_GO_BECOME_SELECTED( HUM_NOW ) - Send to all grobj children.
+MSG_META_CLIPBOARD_COPY
+(MSG_GO_CREATE_TRANSFER)
+MSG_GB_CREATE_GROBJ_TRANSFER_FORMAT
+
+Paste
+-----
+(GrObjTestSupportedTransferFormats)
+(GrLoadGString)
+(MSG_META_CLIPBOARD_PASTE)
+(MSG_GO_REPLACE_WITH_TRANSFER)
+MSG_GB_PASTE / MSG_GB_QUICK_PASTE
+
+
+Scrapbook format
+----------------
+Token:    Scbk, MANUFACTURER_ID_GEOWORKS,
+Protocol: 2.0

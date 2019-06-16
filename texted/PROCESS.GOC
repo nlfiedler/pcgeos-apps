@@ -1,0 +1,133 @@
+/********************************************************************
+ *
+ * Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Text Editor
+ * MODULE:      Process Methods
+ * FILE:        process.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *
+ * DESCRIPTION:
+ *      This is a text file editor for GEOS-based devices. It's
+ *      features include: spell checking, cut/copy/paste/undo,
+ *      font control, point size control, printing, and multi-file
+ *      editing.
+ *
+ *      These are the function definitions and method definitions
+ *      for the process object.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Objects/vlTextC.goh>
+    #include <initfile.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              Code for TFEProcessClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_OPEN_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     This is sent by the UI when the app is being
+ *               loaded.
+ * PARAMETERS:   AppAttachFlags attachFlags
+ *               MemHandle      launchBlock
+ *               MemHandle      extraState
+ * RETURNS:      void
+ * SIDE EFFECTS: Changes curPointSize_g
+ * STRATEGY:     Read saved point size from GEOS.INI file.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFEProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION {
+      /*
+       * sizeOfData - Size of data read from INI file.
+       */
+    word sizeOfData;
+
+    @callsuper();
+
+      /*
+       * Read saved point size from GEOS.INI file.
+       * If there is an error, set size to default.
+       * Error indicates our category hasn't been added yet.
+       */
+    sizeOfData = 0;
+    InitFileReadDataBuffer( TFE_INI_CATEGORY,
+                            TFE_INI_PTSZ_KEYWORD,
+                            &curPointSize_g,
+                            sizeof( curPointSize_g ),
+                            &sizeOfData );
+    if ( sizeof( curPointSize_g ) != sizeOfData ) {
+        curPointSize_g.WWF_int  = TFE_DEFAULT_PS;
+        curPointSize_g.WWF_frac = 0;
+    }
+
+      /*
+       * Read saved font ID from GEOS.INI file.
+       * If there is an error, set font to default.
+       * Error indicates our category hasn't been added yet.
+       */
+    sizeOfData = 0;
+    InitFileReadDataBuffer( TFE_INI_CATEGORY,
+                            TFE_INI_FONT_KEYWORD,
+                            &curFontID_g,
+                            sizeof( curFontID_g ),
+                            &sizeOfData );
+    if ( sizeof( curFontID_g ) != sizeOfData ) {
+        curFontID_g = TFE_DEFAULT_FONT;
+    }
+} /* MSG_GEN_PROCESS_OPEN_APPLICATION */
+
+/********************************************************************
+ *              MSG_META_SAVE_OPTIONS
+ ********************************************************************
+ * SYNOPSIS:     Tells application to save configuration.
+ * CALLED BY:    TFESaveOptsTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Save current point size to GEOS.INI file, then
+ *               call GenApplication to save it's options.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFEProcessClass, MSG_META_SAVE_OPTIONS {
+
+      /*
+       * Save point size to GEOS.INI file.
+       * Save font ID to GEOS.INI file.
+       * Make sure other options are saved, too.
+       */
+    InitFileWriteData( TFE_INI_CATEGORY,
+                       TFE_INI_PTSZ_KEYWORD,
+                       &curPointSize_g,
+                       sizeof( curPointSize_g ) );
+    InitFileWriteData( TFE_INI_CATEGORY,
+                       TFE_INI_FONT_KEYWORD,
+                       &curFontID_g,
+                       sizeof( curFontID_g ) );
+    @send application::MSG_META_SAVE_OPTIONS();
+    @callsuper();
+} /* MSG_META_SAVE_OPTIONS */
+

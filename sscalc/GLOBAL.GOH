@@ -1,0 +1,36 @@
+/********************************************************************
+ *
+ * PROJECT:     Spreadsheet
+ * MODULE:      Globals Header
+ * FILE:        global.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *
+ * DESCRIPTION:
+ *      This is a simple spreadsheet program for GEOS-based PDAs.
+ *      This header contains global variables, global objects, and
+ *      global function prototypes.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Global Variable Declarations
+ *******************************************************************/
+
+/********************************************************************
+ *              Global Object Declarations
+ *******************************************************************/
+    @extern object CalcSSEditBarControl;
+    @extern object CalcSpreadsheet;
+    @extern object CalcHorizRuler;
+    @extern object CalcVertRuler;
+
+/********************************************************************
+ *              Global Function Prototypes
+ *******************************************************************/
+

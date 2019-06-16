@@ -1,0 +1,53 @@
+/********************************************************************
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Process Methods
+ * FILE:        process.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/17/95         Initial version
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file contains all the process methods.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/vltextc.goh>
+    @include <objects/clipbrd.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Code for SBProcessClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_SB_PROCESS_AWAKEN_GOTO_LIST
+ ********************************************************************
+ * SYNOPSIS:     Cause the "Goto Item" list to appear.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Send the initiate message to the goto box.
+ * REVISION HISTORY:
+ *      Name   Date      Description
+ *      ----   ----      -----------
+ *       NF    08/17/95  Initial Version
+ *******************************************************************/
+@extern method SBProcessClass, MSG_SB_PROCESS_AWAKEN_GOTO_LIST {
+
+      /* Tell GotoItemBox to display itself. */
+    @send SBGotoItemBox::MSG_GEN_INTERACTION_INITIATE();
+} /* MSG_SB_PROCESS_AWAKEN_GOTO_LIST */
+

@@ -1,0 +1,670 @@
+/********************************************************************
+ *
+ *      Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      Document Methods
+ * FILE:        document.goc
+ *
+ * AUTHORS:     Allen Schoonmaker
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Converted to Zoomer application and
+ *                              added more functionality.
+ *
+ * DESCRIPTION:
+ *      Methods for dealing with the documents.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <grobj.goh>
+    @include <ruler.goh>
+    #include <print.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Functions
+ *******************************************************************/
+
+/********************************************************************
+ *              DDocumentGetBodyOD
+ ********************************************************************
+ * SYNOPSIS:     Return the optr to the GrObjBody object stored in the
+ *               passed document file.
+ * CALLED BY:    MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT
+ *               MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT
+ * RETURN:       Object Pointer of GrObjBody object.
+ * STRATEGY:     - Get the map block of our file.
+ *               - Fetch VMBlockHandle stored in the map block.
+ *               - Map that to a memory handle and construct an
+ *                 optr from that memory handle and the chunk of
+ *                 the body in our template resource.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Changed for Draw
+ *******************************************************************/
+static optr
+DDocumentGetBodyOD( FileHandle docFileHandle )
+  /*
+   * docFileHandle - File the document is using.
+   */
+{
+
+      /*
+       * vmhMapBlock  - VMBlockHandle of map block allocated when
+       *                document was initialized.
+       * mhTemp       - Memory handle of vmhMapBlock/vmhBodyBlock.
+       * pMapBlock    - Pointer to the map block when it's been
+       *                locked down.
+       * vmhBodyBlock - VMBlockHandle, as extracted from the map block.
+       */
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhTemp;
+    DMapBlock *   pMapBlock;
+    VMBlockHandle vmhBodyBlock;
+
+      /*
+       * Get the map block of the VM file passed. This is done
+       * with the kernel routine VMGetMapBlock(). Then lock
+       * the map block into memory with VMLock() so we can
+       * get the handle from it.
+       * Get the handle from the map block, then unlock the
+       * map block so the memory manager can swap it if necessary.
+       */
+    vmhMapBlock = VMGetMapBlock( docFileHandle );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, vmhMapBlock ); )
+    pMapBlock = VMLock( docFileHandle, vmhMapBlock, &mhTemp);
+EC( ECCheckMemHandle( mhTemp ); )
+EC( ECCheckBounds( pMapBlock ); )
+    vmhBodyBlock = pMapBlock->DMB_vmhGrObjBody;
+    VMUnlock( mhTemp );
+
+      /*
+       * Translate the VM handle just retrieved into its memory
+       * equivalent. This will be the global handle portion of
+       * the body's optr.
+       * Return the entire optr of the GrObjBody object in this
+       * document.
+       */
+    mhTemp = VMVMBlockToMemBlock( docFileHandle, vmhBodyBlock );
+EC( ECCheckMemHandle( mhTemp ); )
+    return( ConstructOptr( mhTemp, OptrToChunk( @DGrObjBody ) ) );
+} /* DDocumentGetBodyOD */
+
+/********************************************************************
+ *              Code for DDocumentClass
+ *******************************************************************/
+
+/********************************************************************
+ *	        MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE
+ ********************************************************************
+ * SYNOPSIS:     Initialize a newly-created document file.
+ * PARAMETERS:   void
+ * RETURNS:      Boolean - TRUE if error occurred.
+ * SIDE EFFECTS: The map block is allocated, initialized and set for
+ *               the file.
+ * STRATEGY:     Three things to do here:
+ *               1. Duplicate the resource that contains the
+ *                  GrObjBody and the GrObjAttributeManager
+ *                  we'll be using for this document and attach
+ *                  it to a VM block in the document.
+ *               2. Tell the attribute manager to initialize
+ *                  itself.
+ *               3. Allocate a map block for the file and store
+ *                  the VM block handle of the duplicated resource
+ *                  in it so we can get back to the body when we
+ *                  reopen the document later in life.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Changed for Draw
+ *******************************************************************/
+@extern method DDocumentClass, MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE {
+    /*
+     * vmhMapBlock     - VMBlockHandle of new map block.
+     * vmhGrObjBodyDup - VMBlockHandle of block for GrObjBody.
+     * pMapBlock       - Locked map block.
+     * mhMapBlock      - Handle of locked map block.
+     * mhGrObjBodyDup  - Handle of new GrObjBody resource.
+     * odGrObjBody     - Pointer to graphic object body.
+     */
+  VMBlockHandle vmhMapBlock;
+  VMBlockHandle vmhGrObjBodyDup;
+  DMapBlock *   pMapBlock;
+  MemHandle     mhMapBlock;
+  MemHandle     mhGrObjBodyDup;
+  optr          odGrObjBody;
+
+      /*
+       * Call our superclass to get the default behavior.
+       * Error in superclass, so return error now.
+       */
+    if ( @callsuper() ) {
+        return( TRUE );
+    }
+
+      /*
+       * Duplicate block with GrObjBody and GrObjAttributeManager in
+       * it and have its burden thread be our process thread.
+       * Then attach block to the VM file. The handle of the block
+       * must be preserved so its objects can be incorporated into the
+       * visible tree below the document object while the file remains
+       * open. Without this, the block might get discarded by the
+       * system, the handle re-used, and random death result.
+       */
+    mhGrObjBodyDup = ObjDuplicateResource(
+        OptrToHandle( @DGrObjBody ), 0, 0 );
+    pself = ObjDerefGen( oself );
+    vmhGrObjBodyDup = VMAttach( pself->GDI_fileHandle, 0,
+                                mhGrObjBodyDup );
+    VMPreserveBlocksHandle( pself->GDI_fileHandle, vmhGrObjBodyDup );
+
+      /*
+       * Have attribute manager create all the attribute and style
+       * arrays that it needs to use.
+       * Allocate a block, and make it the map block.
+       * Set the GrObjBody block handle.
+       */
+    odGrObjBody = ConstructOptr( mhGrObjBodyDup, OptrToChunk( @DGOAM ) );
+    @send odGrObjBody::MSG_GOAM_CREATE_ALL_ARRAYS();
+    pself = ObjDerefGen( oself );
+    vmhMapBlock = VMAlloc( pself->GDI_fileHandle,
+                           sizeof( DMapBlock ), 0);
+    VMSetMapBlock( pself->GDI_fileHandle, vmhMapBlock );
+    pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock, &mhMapBlock );
+    pMapBlock->DMB_vmhGrObjBody = vmhGrObjBodyDup;
+
+      /*
+       * Set default document page size in map block.
+       */
+    pMapBlock->DMB_pageSize.PSR_width = ( 8.5 * 72 );
+    pMapBlock->DMB_pageSize.PSR_height = ( 11 * 72 );
+    pMapBlock->DMB_pageSize.PSR_margins.PCMP_left = ( 0.5 * 72 );
+    pMapBlock->DMB_pageSize.PSR_margins.PCMP_top = ( 0.5 * 72 );
+    pMapBlock->DMB_pageSize.PSR_margins.PCMP_right = ( 0.5 * 72 );
+    pMapBlock->DMB_pageSize.PSR_margins.PCMP_bottom = ( 0.5 * 72 );
+/* Produces error in compile.
+    pMapBlock->DMB_pageSize.PSR_layout = ( PT_PAPER
+                                       | ( PO_PORTRAIT << 3 ) );
+*/
+
+      /*
+       * Mark block dirty.
+       * Return no error.
+       */
+    VMDirty( mhMapBlock );
+    VMUnlock( mhMapBlock );
+    return( FALSE );
+} /* MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     The document has been opened, and any UI required
+ *               has been created, so initialize the UI itself.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: The duplicated GrObjBody is added as a child of
+ *               the document.
+ * STRATEGY:     Add the GrObjBody as a visible child of the document
+ *               and tell it it's been so added, passing along the OD
+ *               of the GrObjHead for our application.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Changed for Draw
+ *******************************************************************/
+@extern method DDocumentClass, MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT {
+      /*
+       * odGrObjBody   - Pointer to GrObjBody.
+       * vmhMapBlock   - Map block handle.
+       * mhMapBlock    - Locked map block handle.
+       * pMapBlock     - Pointer to locked map block.
+       */
+    optr          odGrObjBody;
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhMapBlock;
+    DMapBlock *   pMapBlock;
+
+      /*
+       * Call the superclass to implement default functionality.
+       */
+    @callsuper();
+
+      /*
+       * Get the OD of the GrObjBody from the map block.
+       */
+    pself = ObjDerefGen( oself );
+    odGrObjBody = DDocumentGetBodyOD( pself->GDI_fileHandle );
+
+      /*
+       * Add the graphic body as the first child of the Document.
+       * Doesn't mark dirty because we don't want the document
+       * dirtied as soon as it is open, nor do we save the
+       * Document or the parent pointer in the GrObjBody.
+       */
+    @send self::MSG_VIS_ADD_NON_DISCARDABLE_VM_CHILD(
+        odGrObjBody, CCO_FIRST );
+
+      /*
+       * Notify the GrObjBody that it has been added to the
+       * Document. And pass GrObjHead to it so it knows
+       * who to notify when it gets the target.
+       */
+    @send odGrObjBody::MSG_GB_ATTACH_UI( @DGrObjHead );
+    pself = ObjDerefGen( oself );
+    @send odGrObjBody::MSG_GB_ATTACH_RULER(
+        ConstructOptr( pself->GDI_display, OptrToChunk( @DVertRuler ) ) );
+
+      /*
+       * Set the view to be controlled.
+       */
+    @call application::MSG_META_GCN_LIST_ADD(
+        ConstructOptr( pself->GDI_display, OptrToChunk( @DView ) ),
+        GAGCNLT_CONTROLLED_GEN_VIEW_OBJECTS, MANUFACTURER_ID_GEOWORKS );
+
+      /*
+       * Read in page size information.
+       * Set PageSizeControl document size.
+       * TRUE signals that the document is currently open.
+       */
+    pself = ObjDerefGen( oself );
+    vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+    pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock, &mhMapBlock );
+    pself->DDI_pageSize = pMapBlock->DMB_pageSize;
+    VMUnlock( mhMapBlock );
+    SpoolSetDocSize( TRUE, &(pself->DDI_pageSize) );
+} /* MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE
+ ********************************************************************
+ * SYNOPSIS:     Save the page size to the map block.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * STRATEGY:     Get map block and copy page size information to it.
+ *               Dirty the block so it will be saved.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Changed for Draw
+ *******************************************************************/
+@extern method DDocumentClass,
+                   MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE {
+      /*
+       * vmhMapBlock - Map block handle.
+       * mhMapBlock  - Locked map block handle.
+       * pMapBlock   - Pointer to locked map block.
+       */
+    VMBlockHandle vmhMapBlock;
+    MemHandle     mhMapBlock;
+    DMapBlock *   pMapBlock;
+
+      /*
+       * Save page size information to the map block.
+       */
+    pself = ObjDerefGen( oself );
+    vmhMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+    pMapBlock = VMLock( pself->GDI_fileHandle, vmhMapBlock, &mhMapBlock );
+    pMapBlock->DMB_pageSize = pself->DDI_pageSize;
+    VMDirty( mhMapBlock );
+    VMUnlock( mhMapBlock );
+
+      /*
+       * Call the superclass to get default behavior.
+       */
+    @callsuper();
+} /* MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     Document is being closed, so remove the GrObjBody
+ *               from the visible tree before that happens.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: The body is visually closed and removed from the
+ *               tree below the document.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Changed for Draw
+ *******************************************************************/
+@extern method DDocumentClass,
+                   MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT {
+      /*
+       * odGrObjBody - Pointer to GrObjBody.
+       */
+    optr odGrObjBody;
+
+      /*
+       * Notify the GrObjBody that it is about to be
+       * removed from the Document/Content and closed.
+       * Remove it from the visible tree.
+       */
+    odGrObjBody = DDocumentGetBodyOD( pself->GDI_fileHandle );
+    @send odGrObjBody::MSG_GB_DETACH_UI();
+    @send odGrObjBody::MSG_VIS_REMOVE_NON_DISCARDABLE(
+        VUM_DELAYED_VIA_APP_QUEUE );
+
+      /*
+       * Call the superclass to get default behavior.
+       */
+    @callsuper();
+} /* MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT */
+
+/********************************************************************
+ *              MSG_PRINT_START_PRINTING
+ ********************************************************************
+ * SYNOPSIS:     Print the graphic objects.
+ * CALLED BY:    PrintControl
+ * PARAMETERS:   optr         printCtrlOD
+ *               GStateHandle gstate
+ * RETURNS:      void
+ * STRATEGY:     Get printer margins, then send MSG_VIS_DRAW to
+ *               GrObjBody object with the DF_PRINT flag, then
+ *               signal printing completed.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *******************************************************************/
+@extern method DDocumentClass, MSG_PRINT_START_PRINTING {
+      /*
+       * psr         - Size of page from PrintControl.
+       * odGrObjBody - Pointer to grobj body.
+       */
+    PageSizeReport psr;
+    optr           odGrObjBody;
+
+      /*
+       * Get pointer to GrObjBody.
+       * Set the size to reflect current document size.
+       */
+    pself = ObjDerefGen( oself );
+    odGrObjBody = DDocumentGetBodyOD( pself->GDI_fileHandle );
+    @call printCtrlOD::MSG_PRINT_CONTROL_SET_DOC_SIZE_INFO(
+                           &(pself->DDI_pageSize) );
+
+       /*
+        * Print graphic object body.
+        * Signal printing is completed.
+        */
+    @call odGrObjBody::MSG_VIS_DRAW( DF_PRINT, gstate );
+    GrNewPage( gstate, PEC_FORM_FEED );
+    @send printCtrlOD::MSG_PRINT_CONTROL_PRINTING_COMPLETED();
+} /* MSG_PRINT_START_PRINTING */
+
+/********************************************************************
+ *              MSG_PRINT_REPORT_PAGE_SIZE
+ ********************************************************************
+ * SYNOPSIS:     Modify the page size.
+ * CALLED BY:    PageSizeControl
+ * PARAMETERS:   PageSizeReport * psr
+ * RETURNS:      void
+ * STRATEGY:     Set the GenView document bounds and GrObjBody
+ *               bounds using the passed dimensions.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *******************************************************************/
+@extern method DDocumentClass, MSG_PRINT_REPORT_PAGE_SIZE {
+      /*
+       * gstate     - Used to redraw document.
+       * vself      - Pointer to vis data.
+       */
+    GStateHandle         gstate;
+    VisContentInstance * vself;
+
+      /*
+       * Tell document to set the bounds.
+       * Save the page size.
+       * Mark document dirty so data cache will be saved.
+       */
+    @send self::MSG_D_DOC_SET_BOUNDS( psr );
+    pself = ObjDerefGen( oself );
+    pself->DDI_pageSize = *psr;
+    @send DDocumentGroup::MSG_GEN_DOCUMENT_GROUP_MARK_DIRTY_BY_FILE(
+        pself->GDI_fileHandle );
+
+      /*
+       * Tell ourselves to redraw so everything will be
+       * redrawn properly.
+       */
+    vself = ObjDerefVis( oself );
+    gstate = GrCreateState( vself->VCNI_window );
+    GrInvalRect( gstate, MIN_COORD, MIN_COORD, MAX_COORD, MAX_COORD );
+    @call self::MSG_VIS_DRAW( DF_EXPOSED, gstate );
+    GrDestroyState( gstate );
+} /* MSG_PRINT_REPORT_PAGE_SIZE */
+
+/********************************************************************
+ *	        MSG_D_DOC_SET_BOUNDS
+ ********************************************************************
+ * SYNOPSIS:	 Draw ourselves in the view space.
+ * PARAMETERS:	 PageSizeReport * psr
+ * RETURNS:      nothing
+ * STRATEGY:     Draw the margin boundary using GrDrawRect,
+ *               then call the superclass.
+ * REVISION HISTORY:
+ *      Name     Date      Description
+ *      ----     ----      -----------
+ *       NF      07/01/95  Initial version
+ *******************************************************************/
+@extern method DDocumentClass, MSG_D_DOC_SET_BOUNDS {
+      /*
+       * odGrObjBody - Object pointer to GrObjBody.
+       * bounds      - Bounds for GrObjBody.
+       * vself       - Pointer to vis instance data.
+       */
+    optr          odGrObjBody;
+    RectDWord     bounds;
+    VisInstance * vself;
+
+      /*
+       * Set GenView document bounds.
+       */
+    pself = ObjDerefGen( oself );
+    @send pself->GCI_genView::MSG_GEN_VIEW_SET_DOC_BOUNDS(
+        psr->PSR_height, psr->PSR_width, 0, 0 );
+
+      /*
+       * Set GrObjBody bounds.
+       */
+    pself = ObjDerefGen( oself );
+    odGrObjBody = DDocumentGetBodyOD( pself->GDI_fileHandle );
+    bounds.RD_left = 0;
+    bounds.RD_top = 0;
+    bounds.RD_right = psr->PSR_width;
+    bounds.RD_bottom = psr->PSR_height;
+    @send odGrObjBody::MSG_GB_SET_BOUNDS( &bounds );
+
+      /*
+       * Set the VI_bounds of the document.
+       */
+    vself = ObjDerefVis( oself );
+    vself->VI_bounds.R_left = 0;
+    vself->VI_bounds.R_top = 0;
+    vself->VI_bounds.R_right = psr->PSR_width;
+    vself->VI_bounds.R_bottom = psr->PSR_height;
+} /* MSG_D_DOC_SET_BOUNDS */
+
+/********************************************************************
+ *	        MSG_VIS_DRAW
+ ********************************************************************
+ * SYNOPSIS:	 Draw ourselves in the view space.
+ * PARAMETERS:	 DrawFlags    drawFlags
+ *               GStateHandle gstate
+ * RETURNS:      nothing
+ * STRATEGY:     Draw the margin boundary using GrDrawRect,
+ *               then call the superclass.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *******************************************************************/
+@extern method DDocumentClass, MSG_VIS_DRAW {
+      /*
+       * grayDM - Used to draw outline of printer margins.
+       * left,
+       * top,
+       * right,
+       * bottom - Boundaries of margins.
+       */
+    DrawMask      grayDM = { 85, 170, 85, 170, 85, 170, 85, 170 };
+    sword         left;
+    sword         top;
+    sword         right;
+    sword         bottom;
+
+      /*
+       * Check if we're not printing. If so, then draw the
+       * margin boundary line. This will work even if margins
+       * are negative numbers.
+       */
+    if ( !( drawFlags & DF_PRINT ) ) {
+      pself = ObjDerefGen( oself );
+
+        /*
+         * Draw the margin boundary.
+         */
+      left   = pself->DDI_pageSize.PSR_margins.PCMP_left;
+      top    = pself->DDI_pageSize.PSR_margins.PCMP_top;
+      right  = pself->DDI_pageSize.PSR_width -
+               pself->DDI_pageSize.PSR_margins.PCMP_right;
+      bottom = pself->DDI_pageSize.PSR_height -
+               pself->DDI_pageSize.PSR_margins.PCMP_bottom;
+      GrSetLineMaskCustom( gstate, &grayDM );
+      GrDrawRect( gstate, left, top, right, bottom );
+    }
+
+      /*
+       * Call superclass to draw the graphic objects.
+       */
+    @callsuper();
+} /* MSG_VIS_DRAW */
+
+/********************************************************************
+ *              MSG_VIS_RECALC_SIZE
+ ********************************************************************
+ * SYNOPSIS:     Return the size we wish our document to be.
+ * PARAMETERS:	 word width
+ *               word height
+ * RETURNS:      SizeAsDWord - Size of document.
+ * STRATEGY:     Return the current size of the document.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *******************************************************************/
+@extern method DDocumentClass, MSG_VIS_RECALC_SIZE {
+      /*
+       * ourWidth  - Width of document.
+       * ourHeight - Height of document.
+       */
+    word ourWidth;
+    word ourHeight;
+
+    pself = ObjDerefVis( oself );
+    ourWidth = pself->DDI_pageSize.PSR_width;
+    ourHeight = pself->DDI_pageSize.PSR_height;
+    return( MAKE_SIZE_DWORD( ourWidth, ourHeight ) );
+} /* MSG_VIS_RECALC_SIZE */
+
+/********************************************************************
+ *              MSG_META_CONTENT_VIEW_WIN_OPENED
+ ********************************************************************
+ * SYNOPSIS:     Set the document and view bounds to that stored
+ *               in the document instance data.
+ * PARAMETERS:	 word viewWidth
+ *               word viewHeight
+ *               word viewWindow
+ * RETURNS:      void
+ * STRATEGY:     Call document set-bounds method and then call
+ *               superclass.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *******************************************************************/
+@extern method DDocumentClass, MSG_META_CONTENT_VIEW_WIN_OPENED {
+
+    @send self::MSG_D_DOC_SET_BOUNDS( &(pself->DDI_pageSize) );
+
+    @callsuper();
+} /* MSG_META_CONTENT_VIEW_WIN_OPENED */
+
+/********************************************************************
+ *              MSG_D_DOCUMENT_SHOW_RULERS
+ ********************************************************************
+ * SYNOPSIS:     Show or hide the rulers.
+ * PARAMETERS:   RulerShowControlAttrs flags
+ * RETURNS:      void
+ * CALLED BY:    DRulerShowControl
+ * STRATEGY:     Set the rulers usable or unusable, according to
+ *               the attributes.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *******************************************************************/
+@extern method DDocumentClass, MSG_D_DOCUMENT_SHOW_RULERS {
+      /*
+       * leftView   - Optr to vertical ruler view.
+       * cornerView - Optr to corner view.
+       * topView    - Optr to horizontal ruler view.
+       */
+    optr leftView;
+    optr cornerView;
+    optr topView;
+
+      /*
+       * See which rulers are visible and make them
+       * usable accordingly.
+       */
+    pself = ObjDerefGen( oself );
+    leftView = ConstructOptr( pself->GDI_display,
+                              OptrToChunk( @DVertView ) );
+      /*
+       * Turn off corner view, too.
+       */
+    cornerView = ConstructOptr( pself->GDI_display,
+                                OptrToChunk( @DCornerView ) );
+       /*
+        * Turn off top interaction because there's a corner view
+        * which forces the interaction to stay visible.
+        */
+    topView = ConstructOptr( pself->GDI_display,
+                             OptrToChunk( @DTopInteraction ) );
+    if ( flags & RSCA_SHOW_VERTICAL ) {
+        @call leftView::MSG_GEN_SET_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+        @call cornerView::MSG_GEN_SET_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+    }
+    else {
+        @call leftView::MSG_GEN_SET_NOT_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+        @call cornerView::MSG_GEN_SET_NOT_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+    }
+    if ( flags & RSCA_SHOW_HORIZONTAL ) {
+        @call topView::MSG_GEN_SET_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+    }
+    else {
+        @call topView::MSG_GEN_SET_NOT_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+    }
+} /* MSG_D_DOCUMENT_SHOW_RULERS */
+

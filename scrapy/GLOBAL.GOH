@@ -1,0 +1,86 @@
+/********************************************************************
+ *
+ *  Portions Copyright (c) Geoworks 1991-92 -- All Rights Reserved.
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Global header file
+ * FILE:        global.goh
+ *
+ * AUTHORS:     Brian Chin
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial version
+ *      NF      8/8/95          Added file support.
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file contains all the global variables, objects
+ *      declarations, and function prototypes.
+ *
+ *******************************************************************/
+
+#ifndef __GLOBAL_GOH
+#define __GLOBAL_GOH
+
+/********************************************************************
+ *              Global Variable Declarations
+ *******************************************************************/
+
+/********************************************************************
+ *              Global Object Declarations
+ *******************************************************************/
+      /* appUI.goc objects */
+    @extern object @SBApp;
+    @extern object @SBPrimary;
+    @extern object @SBFileGroup;
+    @extern object @SBDocumentControl;
+    @extern object @SBEditControl;
+    @extern object @SBViewControl;
+    @extern object @SBDisplayControl;
+    @extern object @SBDisplayGroup;
+    @extern object @SBItemNameText;
+    @extern object @SBGotoItemBox;
+    @extern object @SBGotoItemList;
+    @extern chunk @acrBadLMemErrMsg;
+
+      /* docUI.goc objects */
+    @extern object @SBDocumentGroup;
+    @extern object @SBDisplay;
+    @extern object @SBView;
+    @extern object @SBText;
+    @extern chunk @SBTextRegionArray;
+
+/********************************************************************
+ *              Global Function Prototypes
+ *******************************************************************/
+      /*
+       * Routine1.goc
+       */
+      /* Build the text transfer item. */
+    TransferBlockID BuildTextTransferItem( MemHandle mhText_p );
+
+      /* Checks if item pasteable. */
+    Boolean CheckPasteable( ClipboardItemFlags transferFlags_p );
+
+      /* Do the copy operation. */
+    Boolean CopyCommon( ClipboardItemFlags transferFlags_p,
+                        MemHandle          mhText_p );
+
+      /* Do the paste operation. */
+    ClipboardQuickNotifyFlags PasteCommon(
+        ClipboardItemFlags transferFlags_p,
+        optr               odText_p,
+        VMFileHandle       fhScrapbook_p,
+        VMBlockHandle *    vmhItem_p );
+
+      /* Sends notification of selection. */
+    void SendSelectNotify( Boolean bItemExists_p );
+
+      /* Reports error message. */
+    void ErrorMessage( optr odMessage_p );
+
+#endif
+

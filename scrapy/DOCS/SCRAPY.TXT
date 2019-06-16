@@ -1,0 +1,16 @@
+Scrapy Documentation:
+Release 0.4 01/13/96
+
+  Scrapy is very easy to use. In fact, you probably already know how to use it. If you have used Scrapbook then you know how to use Scrapy, since they are very similar. The difference is Scrapy has a couple more features and supports drag-and-drop. Unfortunately, it does not yet support handling graphics.
+
+  There's an on-line help file to explain anything you don't already know about the program, so you can probably go right ahead and start using it now.
+
+
+  Liabilities
+  ===========
+Keep in mind, this is a freeware program. Blue Marsh Softworks and Nathan Fiedler are not liable for any damages caused by the use of Scrapy. The software is provided "as is" and there are no expressed warranties of software quality.
+
+
+  Source Code
+  ===========
+The complete source code to this program is provided with this distribution. The files are named with the following extensions: .MK, .REV, .GP, .GOH, and .GOC. If you are not a programmer you can ignore  files with those extensions.

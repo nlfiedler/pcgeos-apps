@@ -1,0 +1,122 @@
+/********************************************************************
+ *
+ * PROJECT:      Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:       Global Header File
+ * FILE:         global.goh
+ *
+ * AUTHOR:       Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name   Date      Description
+ *      ----   ----      -----------
+ *      NF     11/09/95  Initial version
+ *
+ * DESCRIPTION:
+ *      This contains all the global variables, object declaractions,
+ *      and routine declarations.
+ *
+ *******************************************************************/
+
+#ifndef __GLOBAL_GOH
+#define __GLOBAL_GOH
+
+/********************************************************************
+ *                 Global Variable Declarations
+ *******************************************************************/
+      /*
+       * aDrives_g        - Contains drive numbers.
+       *                    First entry holds token of first
+       *                    available drive, second entry holds
+       *                    token of second available drive, ...
+       * mhClipItems_g    - Item clipboard - holds names of copied items.
+       * cClipItems_g     - Number of items in the clipboard.
+       * acrSourcePath_g,
+       * dhSourceDisk_g   - Source path and disk for clipboard items.
+       * bCancelProcess_g - Tells process thread to stop doing
+       *                    what it's doing.
+       */
+    extern word         aDrives_g[HIGHEST_DRIVE];
+    extern MemHandle    mhClipItems_g;
+    extern word         cClipItems_g;
+    extern FMPathBuffer acrSourcePath_g;
+    extern DiskHandle   dhSourceDisk_g;
+    extern Boolean      bCancelProcess_g;
+
+/********************************************************************
+ *                 Object Declarations
+ *******************************************************************/
+      /* appUI.goc */
+    @extern object FMApp;
+    @extern object FMPrimary;
+    @extern object FMAboutBox;
+    @extern object FMView;
+    @extern object FMCreateDirBox;
+    @extern object FMCreateDirText2;
+    @extern object FMVolumePathText;
+    @extern object FMSpaceAvailText;
+    @extern object FMDriveList;
+    @extern object FMRenameBox;
+    @extern object FMRenameInputText;
+    @extern object FMReplaceBox;
+    @extern object FMReplaceText2;
+    @extern object FMReplaceText4;
+    @extern object FMDiskRenameBox;
+    @extern object FMDiskRenameInputText;
+    @extern object FMBusyBox;
+    @extern object FMBusyText;
+    @extern object FMDirectory;
+
+    @extern chunk FMItems;
+    @extern chunk acrBadFNameErrMsg;
+    @extern chunk acrOperOnROMErrMsg;
+    @extern chunk acrDeleteItemsMsg;
+    @extern chunk acrDeleteErrMsg;
+    @extern chunk acrDelete2ErrMsg;
+    @extern chunk acrDeleteDir1ErrMsg;
+    @extern chunk acrDeleteDir2ErrMsg;
+    @extern chunk acrCreateDirErrMsg;
+    @extern chunk acrCreateDir2ErrMsg;
+    @extern chunk acrMoveCopyFileErrMsg;
+    @extern chunk acrCopy2ErrMsg;
+    @extern chunk acrCopy3ErrMsg;
+    @extern chunk acrMove3ErrMsg;
+    @extern chunk acrRenameErrMsg;
+
+/********************************************************************
+ *                 Function Declarations
+ *******************************************************************/
+    void BuildNewPath( char * dest, char * path, char * file );
+
+    Boolean DeleteDirectory( char * dirName_p );
+
+    void DisplayCurrentPath( void );
+
+    void DisplayDirectory( void );
+
+    void DisplaySpaceFree( void );
+
+    void ErrorMessage( optr odMessage_p, char * string1,
+                       char * string2 );
+
+    Boolean FileExists( char * fileName_p );
+
+    DiskHandle GetCurrentPath( char * pathName_p );
+
+    word GetFirstSelectedItem( void );
+
+    word GetNumSelected( void );
+
+    void HideBusyBox( void );
+
+    void MakeDriveList( void );
+
+    void OpenDirectory( char * dirName_p );
+
+    void ParentDirectory( void );
+
+    void ShowBusyBox( char * message_p );
+
+    Boolean TestDiskWritable( DiskHandle hDisk_p );
+
+#endif
+

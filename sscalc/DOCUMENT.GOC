@@ -1,0 +1,258 @@
+/********************************************************************
+ *
+ * PROJECT:     Spreadsheet
+ * MODULE:      Document Methods
+ * FILE:        document.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *
+ * DESCRIPTION:
+ *      This is a simple spreadsheet program for GEOS-based PDAs.
+ *
+ *      This module contains the methods for the document class.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <ssheet.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              Code for CalcDocumentClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE
+ ********************************************************************
+ * SYNOPSIS:     We're going to create a new spreadsheet file.
+ * PARAMETERS:   void
+ * RETURNS:      Boolean - TRUE if error occurred
+ * SIDE EFFECTS: none
+ * STRATEGY:     Set up the spreadsheet initialization data, then
+ *               call SpreadsheetInitFile() to create the map block
+ *               for the spreadsheet. Assuming that routine doesn't
+ *               set the map block let's call VMSetMapBlock().
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/23/96        Initial version
+ *******************************************************************/
+@extern method CalcDocumentClass, MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE {
+      /*
+       * ifd           - Struct used to initialize the spreadsheet.
+       * hvmbMapBlock  - Map block for new document.
+       * hmemMapBlock  - Map block as stored in memory.
+       */
+    SpreadsheetInitFileData ifd;
+    VMBlockHandle           hvmbMapBlock;
+    MemHandle               hmemMapBlock;
+
+      /*
+       * Call our superclass to get the default behavior.
+       * If an error in superclass, return now.
+       */
+    if ( @callsuper() ) {
+        return( TRUE );
+    }
+
+      /*
+       * Initialize the spreadsheet data file.
+       * Set the returned VM block as the map block.
+       * Lock it down, mark it dirty, then unlock it.
+       */
+    ifd.SIFD_file = pself->GDI_fileHandle;
+    ifd.SIFD_numRows = MAX_ROW;
+    ifd.SIFD_numCols = MAX_COLUMN;
+    ifd.SIFD_drawFlags = 0;
+    hvmbMapBlock = SpreadsheetInitFile( &ifd );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, hvmbMapBlock ); )
+    VMSetMapBlock( pself->GDI_fileHandle, hvmbMapBlock );
+    VMLock( pself->GDI_fileHandle, hvmbMapBlock, &hmemMapBlock );
+EC( ECCheckMemHandle( hmemMapBlock ); )
+    VMDirty( hmemMapBlock );
+    VMUnlock( hmemMapBlock );
+
+      /*
+       * Assume no error has occurred.
+       */
+    return( FALSE );
+} /* MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     We're opening an already created spreadsheet. This
+ *               is also sent after the document object has done
+ *               MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the map block for the spreadsheet and then
+ *               tell the spreadsheet to attach to the document.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/23/96        Initial version
+ *******************************************************************/
+@extern method CalcDocumentClass, MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT {
+      /*
+       * hvmbMapBlock  - Map block for spreadsheet.
+       * odRuler       - Optr to a ruler.
+       * hmemSSheetDup - Duplicate spreadsheet resource.
+       * rself         - Pointer to SpreadsheetRuler instance data.
+       */
+    VMBlockHandle              hvmbMapBlock;
+/*    optr                       odRuler;
+    SpreadsheetRulerInstance * rself;     */
+    MemHandle                  hmemSSheetDup;
+
+    @callsuper();
+
+      /*
+       * Duplicate the spreadsheet resource. Construct an
+       * optr to the duplicate spreadsheet and save it.
+       */
+    hmemSSheetDup = ObjDuplicateResource(
+        OptrToHandle( @CalcSpreadsheet ), 0, 0 );
+EC( ECCheckMemHandle( hmemSSheetDup ); )
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    pself->CDI_odSSheet = ConstructOptr( hmemSSheetDup,
+                                         OptrToChunk( @CalcSpreadsheet ) );
+EC( ECCheckLMemOD( pself->CDI_odSSheet ); )
+
+      /*
+       * Set up the horizontal and vertical rulers so they
+       * point to the duplicated spreadsheet object.
+       */
+/*    odRuler = ConstructOptr( pself->GDI_display, @CalcHorizRuler );
+EC( ECCheckLMemOD( odRuler ); )
+    MemLock( pself->GDI_display );
+    ObjMarkDirty( odRuler );
+    rself = ObjDerefVis( odRuler );
+    rself->SRI_spreadsheet = pself->CDI_odSSheet;
+    odRuler = ConstructOptr( pself->GDI_display, @CalcVertRuler );
+EC( ECCheckLMemOD( odRuler ); )
+    ObjMarkDirty( odRuler );
+    rself = ObjDerefVis( odRuler );
+    rself->SRI_spreadsheet = pself->CDI_odSSheet;
+    MemUnlock( pself->GDI_display ); */
+
+      /*
+       * Add the spreadsheet as the first child of the Document.
+       * Doesn't mark dirty because we don't want the document
+       * dirtied as soon as it is open.
+       */
+    @send self::MSG_VIS_ADD_NON_DISCARDABLE_VM_CHILD(
+        pself->CDI_odSSheet, CCO_FIRST );
+
+      /*
+       * Get the map block and have the spreadsheet object
+       * attach to it.
+       */
+    hvmbMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, hvmbMapBlock ); )
+    @send pself->CDI_odSSheet::MSG_SPREADSHEET_ATTACH_FILE(
+        hvmbMapBlock, pself->GDI_fileHandle );
+} /* MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_READ_CACHED_DATA_FROM_FILE
+ ********************************************************************
+ * SYNOPSIS:     Read data from spreadsheet document.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     First get the map block for the spreadsheet. Then
+ *               send a message to spreadsheet object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *******************************************************************/
+@extern method CalcDocumentClass,
+    MSG_GEN_DOCUMENT_READ_CACHED_DATA_FROM_FILE {
+      /*
+       * hvmbMapBlock - Map block for spreadsheet.
+       */
+    VMBlockHandle hvmbMapBlock;
+
+    hvmbMapBlock = VMGetMapBlock( pself->GDI_fileHandle );
+EC( ECVMCheckVMBlockHandle( pself->GDI_fileHandle, hvmbMapBlock ); )
+    @send pself->CDI_odSSheet::MSG_SPREADSHEET_READ_CACHED_DATA(
+        pself->GDI_fileHandle, hvmbMapBlock );
+
+      /*
+       * Call the superclass to get default behavior.
+       */
+    @callsuper();
+} /* MSG_GEN_DOCUMENT_READ_CACHED_DATA_FROM_FILE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE
+ ********************************************************************
+ * SYNOPSIS:     Write data to spreadsheet document.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Send message to spreadsheet object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *******************************************************************/
+@extern method CalcDocumentClass,
+    MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE {
+
+    @send pself->CDI_odSSheet::MSG_SPREADSHEET_WRITE_CACHED_DATA(
+        pself->GDI_fileHandle );
+
+      /*
+       * Call the superclass to get default behavior.
+       */
+    @callsuper();
+} /* MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     Document is being closed, so remove the ssheet
+ *               from the visible tree before that happens.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Remove the spreadsheet object from ourselves and
+ *               then call the superclass.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/24/96        Initial version
+ *******************************************************************/
+@extern method CalcDocumentClass,
+    MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT {
+
+      /*
+       * Remove spreadsheet from the visible tree.
+       */
+    @send pself->CDI_odSSheet::MSG_VIS_REMOVE_NON_DISCARDABLE(
+        VUM_DELAYED_VIA_APP_QUEUE );
+
+      /*
+       * Call the superclass to get default behavior.
+       */
+    @callsuper();
+} /* MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT */
+

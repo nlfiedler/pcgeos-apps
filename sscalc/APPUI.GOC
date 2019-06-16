@@ -1,0 +1,338 @@
+/********************************************************************
+ *
+ * PROJECT:     Spreadsheet
+ * MODULE:      Objects Module
+ * FILE:        appUI.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *
+ * DESCRIPTION:
+ *      This is a simple spreadsheet program for GEOS-based PDAs.
+ *      This module contains the global static objects.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <ssheet.goh>
+    @include <objects/ssheet/sctrlc.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl CalcProcessClass, neverSaved;
+    @classdecl CalcDocumentClass;
+    @classdecl CalcSSViewClass;
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+    @extern method CalcDocumentClass,
+        MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE;
+    @extern method CalcDocumentClass,
+        MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT;
+    @extern method CalcDocumentClass,
+        MSG_GEN_DOCUMENT_READ_CACHED_DATA_FROM_FILE;
+    @extern method CalcDocumentClass,
+        MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE;
+    @extern method CalcDocumentClass,
+        MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT;
+
+    @extern method CalcSSViewClass, MSG_META_KBD_CHAR;
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              UI Object Resources
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start Application;
+
+@object GenApplicationClass CalcApp = {
+    GI_visMoniker = list { @CalcAppMoniker };
+    GI_comp = @CalcPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+        @CalcPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_APP_STARTUP ) =
+             @CalcDocumentControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_ACTIVE_LIST ) =
+             @CalcDocumentControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_SELF_LOAD_OPTIONS ) =
+             @CalcDocumentControl,
+             @CalcEditControl,
+             @CalcSSEditBarControl;
+    ATTR_GEN_INIT_FILE_CATEGORY = CALC_INIT_CATEGORY;
+}
+
+@visMoniker CalcAppMoniker = "Spreadsheet";
+
+@end Application;
+
+/********************************************************************
+ *              Interface Resource
+ *******************************************************************/
+@start Interface;
+
+@object GenPrimaryClass CalcPrimary = {
+    GI_comp = @CalcFileGroup,
+              @CalcEditGroup,
+              @CalcDisplayGroup;
+}
+
+@object GenInteractionClass CalcFileGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @CalcDocumentControl,
+              @CalcAboutBox;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_FILE_MENU );
+}
+
+@object GenDocumentControlClass CalcDocumentControl = {
+    GDCI_documentToken = { "Calc", 16426 };
+    GDCI_noNameText = "No Document";
+    @localize { "This means no file has been opened yet." };
+    GDCI_documentGroup = @CalcDocumentGroup;
+    GDCI_features = @default &
+        ~( GDCF_SUPPORTS_TEMPLATES |
+           GDCF_SUPPORTS_USER_SETTABLE_EMPTY_DOCUMENT |
+           GDCF_SUPPORTS_USER_MAKING_SHARED_DOCUMENTS |
+           GDCF_NAME_ON_PRIMARY );
+    GDCI_enableDisableList = @CalcDocEnableList;
+}
+
+@chunk optr CalcDocEnableList[] = {
+    @CalcEditControl,
+    @CalcSSEditBarControl
+};
+
+@object GenInteractionClass CalcAboutBox = {
+    GI_visMoniker = "About";
+    GI_comp = @CalcAboutText1,
+              @CalcAboutText2,
+              @CalcAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+@object GenGlyphClass CalcAboutText1 = {
+    GI_visMoniker = "Spreadsheet";
+}
+
+@object GenGlyphClass CalcAboutText2 = {
+    GI_visMoniker = "Blue Marsh Softworks, 1996";
+}
+
+@object GenTriggerClass CalcAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@object GenInteractionClass CalcEditGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @CalcEditControl,
+              @CalcSSEditBarControl;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = (GIGT_EDIT_MENU);
+}
+
+@object GenEditControlClass CalcEditControl = {
+    GI_states = @default & ~GS_ENABLED;
+    GII_visibility = GIV_SUB_GROUP;
+}
+
+@object SSEditBarControlClass CalcSSEditBarControl = {
+    GI_states = @default & ~GS_ENABLED;
+    GI_visMoniker = "Edit bar";
+    GII_visibility = GIV_DIALOG;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+}
+
+  /* Keeps track of multiple displays. */
+@object GenDisplayGroupClass CalcDisplayGroup = {
+    ATTR_GEN_DESTINATION_CLASS = { (ClassStruct*)&CalcDocumentClass };
+    HINT_DEFAULT_FOCUS;
+    HINT_DEFAULT_TARGET;
+}
+
+@end Interface;
+
+/********************************************************************
+ *              DocGroup Resource
+ *******************************************************************/
+@start DocGroup;
+
+@object GenDocumentGroupClass CalcDocumentGroup = {
+    GDGI_untitledName = "Untitled Spreadsheet";
+    @localize { "Name of a newly created text file." };
+    GDGI_attrs = @default | GDGA_VM_FILE_CONTAINS_OBJECTS
+                          | GDGA_LARGE_CONTENT;
+    GDGI_protocolMajor = CALC_DOCUMENT_PROTOCOL_MAJOR;
+    GDGI_protocolMinor = CALC_DOCUMENT_PROTOCOL_MINOR;
+    GDGI_documentClass   = (ClassStruct*)&CalcDocumentClass;
+    GDGI_documentControl = @CalcDocumentControl;
+    GDGI_genDisplayGroup = @CalcDisplayGroup;
+    GDGI_genDisplay      = @CalcDisplay;
+    GDGI_genView         = @CalcSSView;
+}
+
+@end DocGroup;
+
+/********************************************************************
+ *              Display Resource
+ * This entire resource is duplicated by the GenDocumentGroup each
+ * time it creates a new GenDocument object.
+ *******************************************************************/
+@start Display;
+
+  /* Holds GenView */
+@object GenDisplayClass CalcDisplay = {
+    GI_states = @default & ~GS_USABLE;
+    GI_comp = /*@CalcTopInteraction, */
+              @CalcBottomInteraction;
+    ATTR_GEN_DISPLAY_NOT_MINIMIZABLE;
+    HINT_ORIENT_CHILDREN_VERTICALLY;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_EXPAND_HEIGHT_TO_FIT_PARENT;
+}
+
+   /* Holds corner and horizontal views. */
+/*@object GenInteractionClass CalcTopInteraction = {
+    GI_comp = @CalcCornerView,
+              @CalcHorizRulerView;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+} */
+
+   /* Holds vertical ruler and spreadsheet views. */
+@object GenInteractionClass CalcBottomInteraction = {
+    GI_comp = /*@CalcVertRulerView, */
+              @CalcSSView;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_EXPAND_HEIGHT_TO_FIT_PARENT;
+}
+/*
+@object GenViewClass CalcCornerView = {
+    GI_attrs = @default & ~GA_TARGETABLE;
+    GVI_docBounds = { 0, 0, CALC_RULER_WIDTH, CALC_RULER_HEIGHT };
+    GVI_attrs = @default | GVA_SAME_COLOR_AS_PARENT_WIN;
+    GVI_horizAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+}
+
+@object RulerViewClass CalcHorizRulerView = {
+    GVI_docBounds = { 0, 0, CALC_DOCUMENT_WIDTH, CALC_RULER_HEIGHT };
+    GVI_content = @CalcHorizRulerContent;
+    GVI_vertLink = @CalcSSView;
+    GVI_horizAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+}
+
+@object RulerViewClass CalcVertRulerView = {
+    GVI_docBounds = { 0, 0, CALC_RULER_WIDTH, CALC_DOCUMENT_HEIGHT };
+    GVI_content = @CalcVertRulerContent;
+    GVI_horizLink = @CalcSSView;
+    GVI_horizAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+}
+
+@object RulerContentClass CalcHorizRulerContent = {
+    VI_bounds = { 0, 0, CALC_DOCUMENT_WIDTH, CALC_RULER_HEIGHT };
+    VI_attrs = @default & ~VA_MANAGED;
+    VI_optFlags = @default & ~( VOF_GEOMETRY_INVALID
+                              | VOF_GEO_UPDATE_PATH );
+    VCI_comp = @CalcHorizRuler;
+    VCNI_attrs = VCNA_SAME_HEIGHT_AS_VIEW
+               | VCNA_LARGE_DOCUMENT_MODEL
+               | VCNA_WINDOW_COORDINATE_MOUSE_EVENTS;
+}
+
+@object RulerContentClass CalcVertRulerContent = {
+    VI_bounds = { 0, 0, CALC_RULER_WIDTH, CALC_DOCUMENT_HEIGHT };
+    VI_attrs = @default & ~VA_MANAGED;
+    VI_optFlags = @default & ~( VOF_GEOMETRY_INVALID
+                              | VOF_GEO_UPDATE_PATH );
+    VCI_comp = @CalcVertRuler;
+    VCNI_attrs = VCNA_SAME_HEIGHT_AS_VIEW
+               | VCNA_LARGE_DOCUMENT_MODEL
+               | VCNA_WINDOW_COORDINATE_MOUSE_EVENTS;
+}
+
+@object SpreadsheetRulerClass CalcHorizRuler = {
+    VI_bounds = { 0, 0, CALC_DOCUMENT_WIDTH, CALC_RULER_HEIGHT };
+    VI_attrs = @default & ~VA_MANAGED;
+    VI_optFlags = @default | ~( VOF_GEOMETRY_INVALID
+                              | VOF_GEO_UPDATE_PATH );
+    VRI_type = VRT_CUSTOM;
+    VRI_slave = @CalcVertRuler;
+    VRI_rulerAttrs = @default & ~( VRA_SHOW_GRID
+                                 | VRA_SHOW_MOUSE );
+}
+
+@object SpreadsheetRulerClass CalcVertRuler = {
+    VI_bounds = { 0, 0, CALC_RULER_WIDTH, CALC_DOCUMENT_HEIGHT };
+    VI_attrs = @default & ~VA_MANAGED;
+    VI_optFlags = @default | ~( VOF_GEOMETRY_INVALID
+                              | VOF_GEO_UPDATE_PATH );
+    VRI_type = VRT_CUSTOM;
+    VRI_rulerAttrs = @default & ~( VRA_SHOW_GRID
+                                 | VRA_SHOW_MOUSE
+                                 | VRA_MASTER
+                                 | VRA_HORIZONTAL );
+} */
+
+@object CalcSSViewClass CalcSSView = {
+    GVI_docBounds = { 0, 0, CALC_DOCUMENT_WIDTH, CALC_DOCUMENT_HEIGHT };
+    GVI_attrs = @default | GVA_DRAG_SCROLLING
+                         | GVA_WINDOW_COORDINATE_MOUSE_EVENTS;
+    GVI_horizAttrs = @default | GVDA_SCROLLABLE
+                              | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs = @default | GVDA_SCROLLABLE
+                             | GVDA_NO_LARGER_THAN_CONTENT;
+/*    GVI_horizLink = @CalcVertRulerView;
+    GVI_vertLink = @CalcHorizRulerView; */
+    HINT_DEFAULT_FOCUS;
+    HINT_DEFAULT_TARGET;
+}
+
+@end Display;
+
+/********************************************************************
+ *              Document Resource
+ * This entire resource is duplicated by the GenDocument each
+ * time a new GenDocument object is created.
+ *******************************************************************/
+@start Document, notDetachable;
+
+   /* Main object of the program. */
+@object SpreadsheetClass CalcSpreadsheet = {
+    VI_bounds = { 0, 0, CALC_DOCUMENT_WIDTH, CALC_DOCUMENT_HEIGHT };
+    VI_attrs = @default & ~VA_MANAGED;
+    VI_optFlags = @default & ~( VOF_GEOMETRY_INVALID
+                              | VOF_GEO_UPDATE_PATH );
+    SSI_drawFlags = @default | SDF_DRAW_GRID
+                             | SDF_DRAW_NOTE_BUTTON;
+/*    SSI_ruler = @CalcHorizRuler; */
+    SSI_chunk = OptrToChunk( @CalcSpreadsheet );
+}
+
+@end Document;
+

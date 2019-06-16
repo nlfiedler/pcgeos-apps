@@ -1,0 +1,53 @@
+/********************************************************************
+ *
+ * PROJECT:     Spreadsheet
+ * MODULE:      Application Header
+ * FILE:        app.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *
+ * DESCRIPTION:
+ *      This is a simple spreadsheet program for GEOS-based PDAs.
+ *      This header contains constants, data types, and classes.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Constants
+ *******************************************************************/
+       /* Calc's GEOS.INI category name. */
+    #define CALC_INIT_CATEGORY "BMSspreadsheet"
+
+       /* Document protocol numbers. */
+    #define CALC_DOCUMENT_PROTOCOL_MAJOR 1
+    #define CALC_DOCUMENT_PROTOCOL_MINOR 0
+
+       /* Used for sizing rulers and views. */
+    #define CALC_RULER_WIDTH     40
+    #define CALC_RULER_HEIGHT    20
+    #define CALC_DOCUMENT_WIDTH  MAX_COORD
+    #define CALC_DOCUMENT_HEIGHT MAX_COORD
+
+/********************************************************************
+ *              Data Types
+ *******************************************************************/
+
+/********************************************************************
+ *              Class Definitions
+ *******************************************************************/
+    @class CalcProcessClass, GenProcessClass;
+    @endc;
+
+    @class CalcDocumentClass, GenDocumentClass;
+          /* Optr of the duplicate spreadsheet. */
+        @instance optr CDI_odSSheet;
+    @endc;
+
+    @class CalcSSViewClass, GenViewClass;
+    @endc;
+

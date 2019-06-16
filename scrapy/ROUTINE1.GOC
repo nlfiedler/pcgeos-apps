@@ -1,0 +1,488 @@
+/********************************************************************
+ *
+ *  Portions Copyright (c) Geoworks 1991-92 -- All Rights Reserved.
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Functions
+ * FILE:        routine1.goc
+ *
+ * AUTHORS:     Brian Chin
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial version
+ *      NF      8/8/95          Added file support
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file contains the routines for copying and pasting.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/vltextc.goh>
+    @include <objects/clipbrd.goh>
+    #include <ansi/string.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Clipboard Routines
+ *******************************************************************/
+
+/********************************************************************
+ *              BuildTextTransferItem
+ ********************************************************************
+ * SYNOPSIS:     Build a CIF_TEXT transfer item for storage in the
+ *               clipboard.
+ * CALLED BY:    CopyCommon
+ * RETURN:       TransferBlockID of item to register with UI.
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Use the VisText object to create a VM file in the
+ *               clipboard format.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial Revision
+ *******************************************************************/
+TransferBlockID
+BuildTextTransferItem( MemHandle mhText_p )
+  /*
+   * mhText_p - Handle of block containing multi-line,
+   *            null-terminated text. (in)
+   */
+{
+      /*
+       * fhTransferFile    - VM file for text transfer.
+       * odText            - New text object in VM file.
+       * vmhTransferItem   - The transfer item.
+       * itemName          - Item name retrieved from SBItemNameText.
+       */
+    VMFileHandle            fhTransferFile;
+    optr                    odText;
+    VMBlockHandle           vmhTransferItem;
+    ClipboardItemNameBuffer itemName;
+
+      /*
+       * Create a temporary text object to build
+       * CIF_TEXT data block.
+       * Set the text in the text object (we have the
+       * null-terminated text in mhText_p).
+       */
+EC( ECCheckMemHandle( mhText_p ); )
+    fhTransferFile = ClipboardGetClipboardFile();
+EC( ECVMCheckVMFile( fhTransferFile ); )
+    odText = TextAllocClipboardObject( fhTransferFile, 0, 0 );
+EC( ECCheckLMemOD( odText ); )
+    @call odText::MSG_VIS_TEXT_REPLACE_ALL_BLOCK( mhText_p, 0 );
+
+      /*
+       * Tell the text object that we are done with it. It will
+       * destroy itself after it has converted all its text into
+       * a transfer item with just one format:
+       * MANUFACTURER_ID_GEOWORKS::CIF_TEXT. It returns us the
+       * VM block handle of the item.
+       */
+    @call SBItemNameText::MSG_VIS_TEXT_GET_ALL_PTR( itemName );
+    vmhTransferItem = TextFinishWithClipboardObject(
+                          odText, TCO_RETURN_TRANSFER_ITEM,
+                          HandleToOptr( GeodeGetProcessHandle() ),
+                          itemName );
+EC( ECVMCheckVMBlockHandle( fhTransferFile, vmhTransferItem ); )
+
+       /*
+        * While we've got the clipboard file so conveniently
+        * stored away, merge it with the VM block handle of the
+        * item to form the 32-bit ID ClipboardRegisterItem uses,
+        * returning that ID.
+        */
+    return( BlockIDFromFileAndBlock( fhTransferFile, vmhTransferItem ) );
+} /* BuildTextTransferItem */
+
+/********************************************************************
+ *              CheckPasteable
+ ********************************************************************
+ * SYNOPSIS:     See if the current transfer item of the indicated
+ *               type is something we can handle.
+ * CALLED BY:    SendSelectNotify,
+ *               MSG_META_PTR
+ * RETURN:       TRUE if we can, FALSE if we can't
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Look at the formats in which the indicated item
+ *               has been stored and see if any one of them is
+ *               CIF_TEXT or CIF_GROBJ.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      ardeb   7/29/92         Initial Revision
+ *      NF      8/18/96         Add support for graphics.
+ *******************************************************************/
+Boolean
+CheckPasteable( ClipboardItemFlags transferFlags_p )
+  /*
+   * transferFlags_p - Item to check (0 or CIF_QUICK).
+   */
+{
+      /*
+       * query      - Results of query for item.
+       * bPasteable - TRUE if item pastable.
+       */
+    ClipboardQueryArgs query;
+    Boolean            bPasteable;
+
+      /*
+       * Fetch the info on the specified item.
+       * If it has at least one format, and one of them is the
+       * TEXT_FORMAT (defined above), we can paste it. Else, no.
+       */
+    bPasteable = FALSE;
+    ClipboardQueryItem( transferFlags_p, &query );
+    if ( query.CQA_numFormats ) {
+        if ( ClipboardTestItemFormat( query.CQA_header, TEXT_FORMAT ) ) {
+            bPasteable = TRUE;
+        }
+/* XXX - Test for graphic format.
+        else {
+            if ( ClipboardTestItemFormat( query.CQA_header,
+                     GROBJ_FORMAT ) ) {
+                bPasteable = TRUE;
+            }
+        }
+*/
+    }
+
+      /*
+       * Let the clipboard know we're done with the item, so
+       * it can biff it if it was replaced while we were looking at it.
+       */
+    ClipboardDoneWithItem( query.CQA_header );
+
+    return( bPasteable );
+} /* CheckPasteable */
+
+/********************************************************************
+ *              CopyCommon
+ ********************************************************************
+ * SYNOPSIS:     Common code to store the current item in the
+ *               clipboard, as either the normal transfer item
+ *               or the quick transfer item.
+ * CALLED BY:    MSG_META_CLIPBOARD_COPY
+ *               MSG_META_START_MOVE_COPY
+ * RETURN:       TRUE if successful
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: The indicated transfer item is replaced with one
+ *               manufactured from our text block, if we've got one.
+ * STRATEGY:     Call BuildTextTransferItem to convert our text block
+ *               to a transfer item in the clipboard, then register
+ *               that item as the appropriate transfer item.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial Revision
+ *******************************************************************/
+Boolean
+CopyCommon( ClipboardItemFlags transferFlags_p,
+            MemHandle          mhText_p )
+  /*
+   * transferFlags_p - Which item should it become, quick or normal?
+   * mhText_p     - Text block to copy.
+   */
+{
+      /*
+       * transferItem - Temporary transfer item.
+       */
+    TransferBlockID transferItem;
+
+      /*
+       * Build us a transfer item from the text.
+       * Then place it as the designated item, returning the
+       * success or failure of ClipboardRegisterItem.
+       * If no text to copy, return false.
+       */
+EC( ECCheckMemHandle( mhText_p ); )
+    transferItem = BuildTextTransferItem( mhText_p );
+    /* XXX */
+    return( ClipboardRegisterItem( transferItem, transferFlags_p ) );
+} /* CopyCommon */
+
+/********************************************************************
+ *              PasteCommon
+ ********************************************************************
+ * SYNOPSIS:     Paste the normal or quick-transfer item as our
+ *               text block, adding it to the scrapbook.
+ * CALLED BY:    MSG_META_CLIPBOARD_PASTE
+ *               MSG_META_END_MOVE_COPY
+ * RETURN:       ClipboardQuickNotifyFlags for ClipboardEndQuickTransfer
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: textHandle_g is replaced. existing text block is freed.
+ * STRATEGY:     The strategy here is similar to what we employed in
+ *               BuildTextTransferItem().
+ *
+ *               First we make sure the indicated transfer item has
+ *               a TEXT_FORMAT rendering.
+ *
+ *               If it does, we fetch its address (VM block handle)
+ *               in the clipboard file.
+ *
+ *               We create a text object that stores its data in the
+ *               clipboard (it's a convenient place to put it) and tell
+ *               the object to replace all its text with that stored
+ *               in the transfer format whose address we located.
+ *
+ *               If there's not too much text in the object to fit
+ *               in a block on the heap, we fetch it all into a block
+ *               and store that as our textHandle_g.
+ *
+ *               Finally, we destroy the object, telling it to just
+ *               nuke any data it stored in the clipboard.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      brianc  7/91            Initial Revision
+ *******************************************************************/
+ClipboardQuickNotifyFlags
+PasteCommon( ClipboardItemFlags transferFlags_p,
+             optr               odText_p,
+             VMFileHandle       fhScrapbook_p,
+             VMBlockHandle *    vmhItem_p )
+  /*
+   * transferFlags_p - From which item should we paste, quick or normal?
+   * odText_p        - Text object to paste to.
+   * fhScrapbook_p   - Scrapbook document.
+   * vmhItem_p       - VM block of new item.
+   */
+{
+      /*
+       * query        - Info on the indicated transfer item returned here.
+       * request      - Address of requested format returned here.
+       * retVal       - Return value after pasting.
+       * mhDirtyBlock - Used to dirty copied block.
+       */
+    ClipboardQueryArgs        query;
+    ClipboardRequestArgs      request;
+    ClipboardQuickNotifyFlags retVal;
+    MemHandle                 mhDirtyBlock;
+
+      /*
+       * First, find out if the indicated clipboard item
+       * (normal or quick-transfer) supports our TEXT_FORMAT.
+       */
+EC( ECCheckLMemOD( odText_p ); )
+EC( ECVMCheckVMFile( fhScrapbook_p ); )
+    *vmhItem_p = NullHandle;
+    ClipboardQueryItem( transferFlags_p, &query );
+    if ( query.CQA_numFormats ) {
+        if ( ClipboardTestItemFormat( query.CQA_header, TEXT_FORMAT ) ) {
+              /*
+               * A clipboard item exists and does support CIF_TEXT,
+               * let's get it. Fetch the file/block handle of transfer
+               * format GEOWORKS::CIF_TEXT
+               */
+            ClipboardRequestItemFormat( TEXT_FORMAT, query.CQA_header,
+                                        &request );
+              /*
+               * Tell text object to replace all its text (from
+               * position 0 to position TEXT_ADDRESS_PAST_END) with
+               * the transfer format we got back from
+               * ClipboardRequestItemFormat.
+               */
+            @call odText_p::MSG_VIS_TEXT_REPLACE_WITH_TEXT_TRANSFER_FORMAT(
+                                VMCHAIN_GET_VM_BLOCK( request.CRA_data ),
+                                request.CRA_file,
+                                0, TEXT_ADDRESS_PAST_END, 0 );
+              /*
+               * Duplicate the clipboard item and add to scrapbook.
+               * Mark the scrapbook page dirty.
+               * Notify that we have a pastable item.
+               */
+            *vmhItem_p = @call odText_p::MSG_VIS_TEXT_CREATE_TRANSFER_FORMAT(
+                                             NullHandle, fhScrapbook_p,
+                                             0, TEXT_ADDRESS_PAST_END, 0 );
+        }
+/* XXX - Not in TEXT_FORMAT.
+        else {
+            if ( ClipboardTestItemFormat( query.CQA_header,
+                     GROBJ_FORMAT ) ) {
+            }
+        }
+*/
+          /*
+           * Mark item block dirty.
+           * Send notification.
+           */
+        if ( NullHandle != *vmhItem_p ) {
+EC(         ECVMCheckVMBlockHandle( fhScrapbook_p, *vmhItem_p ); )
+            VMLock( fhScrapbook_p, *vmhItem_p, &mhDirtyBlock );
+EC(         ECCheckMemHandle( mhDirtyBlock ); )
+            VMDirty( mhDirtyBlock );
+            VMUnlock( mhDirtyBlock );
+            SendSelectNotify( TRUE );
+            retVal = CQNF_COPY;
+        }
+        else {
+            retVal = CQNF_NO_OPERATION;
+        }
+    }
+    else {  /* No transfer items on clipboard. */
+        retVal = CQNF_NO_OPERATION;
+    }
+    ClipboardDoneWithItem( query.CQA_header );
+    return( retVal );
+} /* PasteCommon */
+
+/********************************************************************
+ *              SendSelectNotify
+ ********************************************************************
+ * SYNOPSIS:     Tell the world about our selection state: whether
+ *               we can paste the current clipboard item, and whether
+ *               we've got anything to copy to the clipboard, if asked.
+ * CALLED BY:    PasteCommon,
+ *               MSG_META_DELETE,
+ *               MSG_META_CLIPBOARD_NOTIFY_NORMAL_TRANSFER_ITEM_CHANGED,
+ *               MSG_META_GAINED_TARGET_EXCL
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * STRATEGY:     Adam wrote it, therefore it must be okay.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      ardeb   7/29/92         Initial Revision
+ *******************************************************************/
+void
+SendSelectNotify( Boolean bItemExists_p )
+  /*
+   * bItemExists_p - Indicates that we can copy and delete.
+   */
+{
+      /*
+       * mhData       - Extra data block sent along with the notification.
+       * pNSSC        - The extra data block, locked.
+       * hNotifyEvent - Recorded notification event for the GCN list.
+       */
+    MemHandle                 mhData;
+    NotifySelectStateChange * pNSSC;
+    EventHandle               hNotifyEvent;
+
+      /*
+       * Allocate the data block we'll be sending along and
+       * lock it down. It must be sharable, as it might be
+       * locked down by something other than the current
+       * application (there's no restriction on who can join an
+       * application's GCN lists). Because the block we're
+       * allocating is so tiny, it's safe to pass the HAF_NO_ERR
+       * flag.
+       */
+    mhData = MemAlloc( sizeof( NotifySelectStateChange ),
+                       ( HF_DYNAMIC | HF_SHARABLE ),
+                       HAF_STANDARD_NO_ERR );
+EC( ECCheckMemHandle( mhData ); )
+    pNSSC = (NotifySelectStateChange*)MemLock( mhData );
+
+      /*
+       * Tell the world that the current selection is text.
+       * We have a "clipboardable" and a deletable selection
+       * if we have any text at all. There's no need for the
+       * user to select it.
+       * The user will not be allowed to "select all" of the text,
+       * as there is no selection.
+       * See if we can paste the normal transfer item.
+       */
+    pNSSC->NSSC_selectionType = SDT_TEXT;
+/* XXX - Graphics
+    pNSSC->NSSC_selectionType = SDT_GRAPHICS;
+*/
+    pNSSC->NSSC_clipboardableSelection = bItemExists_p;
+    pNSSC->NSSC_deleteableSelection = bItemExists_p;
+    pNSSC->NSSC_selectAllAvailable = FALSE;
+    pNSSC->NSSC_pasteable = CheckPasteable( TIF_NORMAL );
+
+      /*
+       * See original sample program for comment.
+       * Keeps block from being freed.
+       */
+    MemUnlock( mhData );
+    MemInitRefCount( mhData, 1 );
+
+      /*
+       * Record the notification event that should be sent out
+       * to each member of MANUFACTURER_ID_GEOWORKS::
+       * GAGCNLT_APP_TARGET_NOTIFY_SELECT_STATE_CHANGE
+       * in the application object. They each get a standard
+       * MSG_META_NOTIFY_WITH_DATA_BLOCK with
+       * GWNT_SELECT_STATE_CHANGE as the notification type.
+       */
+    hNotifyEvent = @record null::MSG_META_NOTIFY_WITH_DATA_BLOCK(
+                                     MANUFACTURER_ID_GEOWORKS,
+                                     GWNT_SELECT_STATE_CHANGE,
+                                     mhData );
+EC( ECCheckEventHandle( hNotifyEvent ); )
+      /*
+       * Now send this recorded message to all the members of that
+       * list, recording the message as the status message (which
+       * any new member will be given when it enrolls in the list),
+       * by sending a MSG_META_GCN_LIST_SEND to our application object.
+       */
+    @call application::MSG_META_GCN_LIST_SEND(
+                           GCNLSF_SET_STATUS,
+                           hNotifyEvent,
+                           mhData,
+                           GAGCNLT_APP_TARGET_NOTIFY_SELECT_STATE_CHANGE,
+                           MANUFACTURER_ID_GEOWORKS );
+} /* SendSelectNotify */
+
+/********************************************************************
+ *              General Routines
+ *******************************************************************/
+
+/********************************************************************
+ *	          ErrorMessage
+ ********************************************************************
+ * SYNOPSIS:     Display an error message, then return to caller.
+ * RETURNS:      void
+ * PRE:          true
+ * POST:         true
+ * SIDE EFFECTS: none
+ * CHECKS:       Ensures odMessage is valid. Doesn't check
+ *               return value from UserStandardDialog.
+ * STRATEGY:     First check the input, then lock down the memory
+ *               and call UserStandardDialog, passing the dereferenced
+ *               pointer to the message. Then unlock the memory.
+ * REVISION HISTORY:
+ *	Name	Date		Description
+ *	----	----		-----------
+ *      NF      7/9/96          Initial version
+ *******************************************************************/
+void
+ErrorMessage( optr odMessage_p )
+  /*
+   * odMessage_p - Message to display. (in)
+   */
+{
+      /*
+       * acrMessage - Pointer to message.
+       */
+    char * acrMessage;
+
+EC( ECCheckLMemOD( odMessage_p ); )
+    MemLock( OptrToHandle( odMessage_p ) );
+    acrMessage = (char*)LMemDeref( odMessage_p );
+EC( ECCheckBounds( acrMessage ); )
+    UserStandardDialog( (char*)0, (char*)0, (char*)0, (char*)0,
+        acrMessage, ( CDT_ERROR << CDBF_DIALOG_TYPE_OFFSET ) |
+        ( GIT_NOTIFICATION << CDBF_INTERACTION_TYPE_OFFSET ) );
+    MemUnlock( OptrToHandle( odMessage_p ) );
+} /* ErrorMessage */
+

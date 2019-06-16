@@ -1,0 +1,167 @@
+/********************************************************************
+ *
+ * PROJECT:     Change Sys Font
+ * MODULE:      Methods for Process Class
+ * FILE:        process.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/18/96         Initial version
+ *
+ * DESCRIPTION:
+ *      Code for the process object. This handles the setting of
+ *      font and reading/writing to the GEOS.INI file.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    #include <initfile.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Methods for FIDProcessClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_FIDP_SET_FONT_ID
+ ********************************************************************
+ * SYNOPSIS:     User wants to change the font to something else.
+ * CALLED BY:    FIDFontGroup
+ * PARAMETERS:   word selection
+ *               word numSelections
+ *               byte stateFlags
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check the number of selections (should be 1), then
+ *               grab the selection and set the font id and size
+ *               for the text object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/18/96         Initial version
+ *******************************************************************/
+@extern method FIDProcessClass, MSG_FIDP_SET_FONT_ID {
+      /*
+       * pointSize - Size to set text object to.
+       */
+    WWFixed pointSize;
+
+      /*
+       * Set point size according to what font was chosen.
+       */
+    if ( 1 == numSelections ) {
+        switch ( selection ) {
+            case FONT_JSYS :
+                fidFontID_g = FID_JSYS;
+                pointSize.WWF_int  = 14;
+                pointSize.WWF_frac = 0;
+                break;
+            case FONT_CALENDAR :
+                fidFontID_g = FID_CALENDAR;
+                pointSize.WWF_int  = 8;
+                pointSize.WWF_frac = 0;
+                break;
+            case FONT_NOTEPAD :
+                fidFontID_g = FID_NOTEPAD;
+                pointSize.WWF_int  = 17;
+                pointSize.WWF_frac = 0;
+                break;
+            case FONT_MONO :
+                fidFontID_g = FID_DTC_URW_MONO;
+                pointSize.WWF_int  = 12;
+                pointSize.WWF_frac = 0;
+                break;
+            case FONT_SANS :
+                fidFontID_g = FID_DTC_URW_SANS;
+                pointSize.WWF_int  = 12;
+                pointSize.WWF_frac = 0;
+                break;
+            default :  /* "Can't happen" */
+                fidFontID_g = FID_DTC_URW_SANS;
+                pointSize.WWF_int  = 12;
+                pointSize.WWF_frac = 0;
+                break;
+        }
+
+          /*
+           * Set font id and size appropriately.
+           */
+        @send FIDGenText::MSG_META_SUSPEND();
+        @send FIDGenText::MSG_VIS_TEXT_SET_FONT_ID(
+            fidFontID_g, TEXT_ADDRESS_PAST_END, 1 );
+        @send FIDGenText::MSG_VIS_TEXT_SET_POINT_SIZE(
+            pointSize, TEXT_ADDRESS_PAST_END, 1 );
+        @send FIDGenText::MSG_META_UNSUSPEND();
+    }
+} /* MSG_FIDP_SET_FONT_ID */
+
+/********************************************************************
+ *              MSG_FIDP_SAVE_FONT_INFO
+ ********************************************************************
+ * SYNOPSIS:     User wants to save font id and size to INI file.
+ * CALLED BY:    FIDSaveInfoTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get font id from global and use that to know
+ *               what to write to INI file.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/18/96         Initial version
+ *******************************************************************/
+@extern method FIDProcessClass, MSG_FIDP_SAVE_FONT_INFO {
+      /*
+       * cFontSize - Font size as a string.
+       * acrSystem - Uses less space.
+       * acrFontID - Uses less space.
+       */
+    word cFontSize;
+    char acrSystem[] = "system";
+    char acrFontID[] = "fontid";
+
+      /*
+       * Write font id to GEOS.INI file.
+       */
+    switch ( fidFontID_g ) {
+        case FID_JSYS :
+            InitFileWriteString( acrSystem, acrFontID, "jsys" );
+            cFontSize = 14;
+            break;
+        case FID_CALENDAR :
+            InitFileWriteString( acrSystem, acrFontID, "calendar" );
+            cFontSize = 8;
+            break;
+        case FID_NOTEPAD :
+            InitFileWriteString( acrSystem, acrFontID, "notepad" );
+            cFontSize = 17;
+            break;
+        case FID_DTC_URW_MONO :
+            InitFileWriteString( acrSystem, acrFontID, "urw mono" );
+            cFontSize = 12;
+            break;
+        case FID_DTC_URW_SANS :
+            InitFileWriteString( acrSystem, acrFontID, "urw sans" );
+            cFontSize = 12;
+            break;
+        default :  /* "Can't happen" */
+            InitFileWriteString( acrSystem, acrFontID, "urw sans" );
+            cFontSize = 12;
+            break;
+    }
+
+      /*
+       * Write point size to GEOS.INI file.
+       * Make sure other options are saved, too.
+       */
+    InitFileWriteInteger( acrSystem, "fontsize", cFontSize );
+    @send application::MSG_META_SAVE_OPTIONS();
+} /* MSG_FIDP_SAVE_FONT_INFO */
+

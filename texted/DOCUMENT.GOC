@@ -1,0 +1,1038 @@
+/********************************************************************
+ *
+ * Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Text Editor
+ * MODULE:      Document Methods
+ * FILE:        document.goc
+ *
+ * AUTHORS:     Lawrence Hosken
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version of SimpWP
+ *      EB      12/16/93        Fixed up scrolling, default focus, and
+ *                              targeting Text object for EditControl.
+ *      NF      4/1/95          Started work on Zoomer Text File Editor
+ *
+ * DESCRIPTION:
+ *      This is a text file editor for GEOS-based devices. It's
+ *      features include: spell checking, cut/copy/paste/undo,
+ *      font control, point size control, printing, and multi-file
+ *      editing.
+ *
+ *      These are the function definitions and method definitions
+ *      for the document object.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Objects/vlTextC.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *	        DocErrorMessage
+ ********************************************************************
+ * SYNOPSIS:     Display an error message, then return to caller.
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Ensures odMessage is valid. Doesn't check
+ *               return value from UserStandardDialog.
+ * STRATEGY:     First check the input, then lock down the memory
+ *               and call UserStandardDialog, passing the dereferenced
+ *               pointer to the message. Then unlock the memory.
+ * REVISION HISTORY:
+ *	Name	Date		Description
+ *	----	----		-----------
+ *      NF      7/9/96          Initial version
+ *******************************************************************/
+void
+DocErrorMessage( optr odMessage_p )
+  /*
+   * odMessage_p - Message to display (in).
+   */
+{
+      /*
+       * pachMessage - Pointer to message.
+       */
+    char * pachMessage;
+
+EC( ECCheckLMemOD( odMessage_p ); )
+
+    MemLock( OptrToHandle( odMessage_p ) );
+    pachMessage = (char*)LMemDeref( odMessage_p );
+EC( ECCheckBounds( pachMessage ); )
+    UserStandardDialog( (char*)0, (char*)0, (char*)0, (char*)0,
+        pachMessage, ( CDT_ERROR << CDBF_DIALOG_TYPE_OFFSET ) |
+        ( GIT_NOTIFICATION << CDBF_INTERACTION_TYPE_OFFSET ) );
+    MemUnlock( OptrToHandle( odMessage_p ) );
+} /* DocErrorMessage */
+
+/********************************************************************
+ *              DocIsBadChar
+ ********************************************************************
+ * SYNOPSIS:     Check if passed character is a bad one or not.
+ * CALLED BY:    DocReadFile
+ *               DocRemoveBadChars
+ * RETURNS:      TRUE if character is bad
+ * SIDE EFFECTS: none
+ * STRATEGY:     Do an if statement to check validity of character.
+ *               Basically we accept any printable character.
+ *               Any value between 32 and 255 is accepted, except
+ *               for 127. Anything less than 32 must be between 9
+ *               and 13, but not 10. All others are bad.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+Boolean
+DocIsBadChar( unsigned char chBad )
+  /*
+   * chBad - Character to test, must be unsigned. (in).
+   */
+{
+
+      /*
+       * Check if passed character is legal
+       * and return appropriate value.
+       */
+    if ( C_NULL == chBad ) {
+        return( TRUE );
+    }
+    else {
+          /*
+           * This depends on chBad being unsigned.
+           */
+        if ( ( C_SPACE  <= chBad ) &&
+             ( C_DELETE != chBad ) ) {
+            return( FALSE );
+        }
+        else {
+            if ( ( C_ENTER    >= chBad ) &&
+                 ( C_TAB      <= chBad ) &&
+                 ( C_LINEFEED != chBad ) ) {
+                return( FALSE );
+            }
+            else {
+                return( TRUE );
+            }
+        }
+    }
+} /* DocIsBadChar */
+
+/********************************************************************
+ *              DocRemoveBadChars
+ ********************************************************************
+ * SYNOPSIS:     Remove some consecutive bad characters.
+ * CALLED BY:    DocReadFile
+ * SIDE EFFECTS: none
+ * STRATEGY:     Look for consecutive bad characters and remove them.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+void
+DocRemoveBadChars( word            iCurChar,
+                   unsigned char * pachText,
+                   word *          pvalCharsLeft )
+  /*
+   * iCurChar      - Position to start check (in).
+   * pachText      - String to examine (i/o).
+   * pvalCharsLeft - Number of characters in array (i/o).
+   */
+{
+
+      /*
+       * cBadChars  - Number of consecutive bad characters.
+       * iShiftChar - Current character being shifted.
+       */
+    word cBadChars;
+    word iShiftChar;
+
+EC( ECCheckBounds( pachText ); )
+EC( ECCheckBounds( pvalCharsLeft ); )
+EC_ERROR_IF( TFE_FILE_BLOCK_SIZE < iCurChar,
+             TFE_ERR_BAD_CHAR_INDEX_VALUE );
+EC_ERROR_IF( TFE_FILE_BLOCK_SIZE < *pvalCharsLeft,
+             TFE_ERR_BAD_CHAR_LEFT_VALUE );
+
+       /*
+        * We found one bad character (by default).
+        * Look for more consecutive bad characters.
+        */
+    cBadChars = 1;
+    while( ( DocIsBadChar( pachText[iCurChar+cBadChars] ) ) &&
+           ( ( iCurChar + cBadChars ) < *pvalCharsLeft  ) ) {
+        cBadChars++;
+    }
+
+      /*
+       * Remove all the consecutive bad characters found.
+       */
+    if ( ( iCurChar + cBadChars ) < *pvalCharsLeft ) {
+        for ( iShiftChar = iCurChar + cBadChars;
+              iShiftChar < *pvalCharsLeft;
+              iShiftChar++ ) {
+            pachText[iShiftChar-cBadChars] = pachText[iShiftChar];
+        }
+    }
+
+      /*
+       * Decrement bytes left by bytes removed.
+       * (Don't move this into the if conditional.
+       * It needs to be done every time.)
+       */
+    *pvalCharsLeft -= cBadChars;
+} /* DocRemoveBadChars */
+
+/********************************************************************
+ *              DocAppendText
+ ********************************************************************
+ * SYNOPSIS:     Removes bad characters from character string and
+ *               appends to current text object.
+ * CALLED BY:    DocReadFile
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check each character to see if it is a valid
+ *               character. If not, remove it. Then append what's
+ *               left to the text object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+void
+DocAppendText( word            cCharsRead_p,
+               optr            odText_p,
+               unsigned char * pachText_p )
+  /*
+   * cCharsRead_p - Number of characters (in).
+   * odText_p     - Text object to append to (in).
+   * pachText_p   - String of characters (i/o).
+   */
+{
+
+      /*
+       * iCurChar   - Index to current char being processed.
+       * cCharsLeft - Number of characters left to process.
+       */
+    word iCurChar;
+    word cCharsLeft;
+
+EC( ECCheckLMemOD( odText_p ); )
+EC( ECCheckBounds( pachText_p ); )
+
+      /*
+       * Loop that checks each character and removes
+       * the bad ones. All consecutive bad characters
+       * are removed in one function call, to save time.
+       */
+    iCurChar = 0;
+    cCharsLeft = cCharsRead_p;
+    while( iCurChar < cCharsLeft ) {
+        if ( DocIsBadChar( pachText_p[iCurChar] ) ) {
+            DocRemoveBadChars( iCurChar, pachText_p, &cCharsLeft );
+        }
+        iCurChar++;
+    }
+
+      /*
+       * Convert the DOS characters to GEOS characters.
+       * Now append the text that's left to text object.
+       */
+    if ( cCharsLeft > 0 ) {
+        LocalDosToGeos( (char*)pachText_p, cCharsLeft, '.' );
+        @call odText_p::MSG_VIS_TEXT_APPEND_PTR( (char*)pachText_p,
+                                                 cCharsLeft );
+    }
+} /* DocAppendText */
+
+/********************************************************************
+ *              DocResetUndo
+ ********************************************************************
+ * SYNOPSIS:     Set the undo status to nothing to undo.
+ * CALLED BY:    ReadDataFromFile
+ * SIDE EFFECTS: none
+ * STRATEGY:     To notify the undo/redo edit control that there is
+ *               nothing to undo, send MSG_META_NOTIFY_WITH_DATA_BLOCK.
+ *               The notification type is GWNT_UNDO_STATE_CHANGE
+ *               and the block you want to send should contain
+ *               the structure NotifyUndoStateChange (
+ *               NUSC_undoTitle = NullOptr and
+ *               NUSC_undoType = UD_UNDO ).
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      4/1/95          Initial version
+ *******************************************************************/
+void
+DocResetUndo( void )
+{
+
+      /*
+       * mhNotifyChange - Handle to undo record.
+       * pNotifyChange  - Record for setting undo.
+       * ehNotifyEvent  - Message sent to edit control.
+       */
+    MemHandle               mhNotifyChange;
+    NotifyUndoStateChange * pNotifyChange;
+    EventHandle             ehNotifyEvent;
+
+      /*
+       * Allocate memory for undo state record.
+       */
+    mhNotifyChange = MemAlloc( sizeof( NotifyUndoStateChange ),
+                               ( HF_DYNAMIC | HF_SHARABLE ),
+                               0 );
+EC( ECCheckMemHandle( mhNotifyChange ); )
+
+      /*
+       * Set up the undo record. Make sure block stays after
+       * it's unlocked.
+       */
+    pNotifyChange = MemLock( mhNotifyChange );
+EC( ECCheckBounds( pNotifyChange ); )
+    pNotifyChange->NUSC_undoTitle = NullOptr;
+    pNotifyChange->NUSC_undoType  = UD_UNDO;
+    MemUnlock( mhNotifyChange );
+    MemInitRefCount( mhNotifyChange, 1 );
+
+      /*
+       * Tell objects on edit control that there's nothing to undo.
+       */
+    ehNotifyEvent = @record null::MSG_META_NOTIFY_WITH_DATA_BLOCK(
+        MANUFACTURER_ID_GEOWORKS,
+        GWNT_UNDO_STATE_CHANGE,
+        mhNotifyChange );
+EC( ECCheckEventHandle( ehNotifyEvent ); )
+    @call application::MSG_META_GCN_LIST_SEND(
+        GCNLSF_SET_STATUS,
+        ehNotifyEvent,
+        mhNotifyChange,
+        GAGCNLT_EDIT_CONTROL_NOTIFY_UNDO_STATE_CHANGE,
+        MANUFACTURER_ID_GEOWORKS );
+} /* DocResetUndo */
+
+/********************************************************************
+ *              DocReadFile
+ ********************************************************************
+ * SYNOPSIS:     Reads text from file and appends to text object.
+ * CALLED BY:    MSG_GEN_DOCUMENT_PHYSICAL_REVERT
+ *               MSG_GEN_DOCUMENT_OPEN
+ * RETURNS:      TRUE if error occurred
+ * SIDE EFFECT:  Resets undo.
+ * STRATEGY:     Deletes text in text object and appends text from
+ *               file.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+Boolean
+DocReadFile( FileHandle hfilInputFile_p,
+             optr       odText_p,
+             word *     pvalError_p )
+  /*
+   * hfilInputFile_p - Handle of file to read from (in).
+   * odText_p        - Text object to write to (in).
+   * pvalError_p     - Pointer to error status word (out).
+   */
+{
+
+      /*
+       * cCharsRead - Size returned by FileRead.
+       * hmemTemp   - Handle of temporary memory block.
+       * pachText   - Holds string being processed.
+       */
+    word            cCharsRead;
+    MemHandle       hmemTemp;
+    unsigned char * pachText;
+
+EC( ECCheckFileHandle( hfilInputFile_p ); )
+EC( ECCheckLMemOD( odText_p ); )
+EC( ECCheckBounds( pvalError_p ); )
+
+      /*
+       * Set position to start of file.
+       * Freeze text object and delete all it's text.
+       */
+    FilePos( hfilInputFile_p, 0L, FILE_POS_START );
+    @send odText_p::MSG_META_SUSPEND();
+    @send odText_p::MSG_VIS_TEXT_DELETE_ALL();
+
+      /*
+       * Allocate memory for dataBlock so we can read in file.
+       * Have memory locked right away, and get pointer to block.
+       */
+    hmemTemp = MemAlloc( TFE_FILE_BLOCK_SIZE, HF_SWAPABLE, 0 );
+EC( ECCheckMemHandle( hmemTemp ); )
+    pachText = (unsigned char*)MemLock( hmemTemp );
+EC( ECCheckBounds( pachText ); )
+
+      /*
+       * Main read loop. Reads in a block from file and removes any
+       * linefeeds, then appends the text to the text object.
+       */
+    do {
+        cCharsRead = FileRead( hfilInputFile_p,
+                               pachText,
+                               TFE_FILE_BLOCK_SIZE,
+                               FALSE );
+        if ( 0xFFFF != cCharsRead ) {
+            DocAppendText( cCharsRead, odText_p, pachText );
+        }
+    } while( TFE_FILE_BLOCK_SIZE == cCharsRead );
+
+      /*
+       * Free memory block. Don't need to unlock first.
+       * Put cursor at beginning of text and unfreeze it.
+       */
+    MemFree( hmemTemp );
+    @send odText_p::MSG_VIS_TEXT_SELECT_START();
+    @call odText_p::MSG_META_UNSUSPEND();
+
+      /*
+       * Check for file read errors by looking for a short read.
+       * If no error, reset undo and set text not user modified.
+       */
+    if ( 0xFFFF == cCharsRead ) {
+        *pvalError_p = ThreadGetError();
+        return( TRUE );
+    }
+    else {
+        DocResetUndo();
+        @send odText_p::MSG_VIS_TEXT_SET_NOT_USER_MODIFIED();
+        return( FALSE );
+    }
+} /* DocReadFile */
+
+/********************************************************************
+ *              DocWriteFile
+ ********************************************************************
+ * SYNOPSIS:     Write the contents of the document to a file.
+ * CALLED BY:    MSG_GEN_DOCUMENT_SAVE
+ *               MSG_GEN_DOCUMENT_UPDATE
+ *               MSG_GEN_DOCUMENT_PHYSICAL_SAVE_AS_FILE_HANDLE
+ * RETURNS:      TRUE if error occurred
+ * SIDE EFFECTS: Tells object it is not modified.
+ * STRATEGY:     Using the text optr and file handle, seek to the
+ *               start of the file and write the text out.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+Boolean
+DocWriteFile( FileHandle hfilOutputFile_p,
+              optr       odText_p,
+              word *     pvalError_p )
+  /*
+   * hfilOutputFile_p - File to write to (in).
+   * odText_p         - Pointer to text object (in).
+   * pvalError_p      - Return error (out).
+   */
+{
+
+      /*
+       * hmemTemp     - Handle of temporary memory block.
+       * pachText     - Used to read in file.
+       * iShiftChar   - Used in for loop.
+       * cCharsInBlk  - Number of bytes in buffer.
+       * iCurChar     - Used in finding CR.
+       * iSelectStart - Start of text selection.
+       * iSelectEnd   - End of text selection.
+       * cTextLength  - Number of characters.
+       * cTotalLength - Text size plus LF's added.
+       * booEndOfText - Signals end of text.
+       * uSavedCursor - Saved cursor position.
+       */
+    MemHandle    hmemTemp;
+    char *       pachText;
+    word         iShiftChar;
+    word         cCharsInBlk;
+    word         iCurChar;
+    dword        iSelectStart;
+    dword        iSelectEnd;
+    dword        cTextLength;
+    dword        cTotalLength;
+    Boolean      booEndOfText;
+    VisTextRange uSavedCursor;
+
+EC( ECCheckFileHandle( hfilOutputFile_p ); )
+EC( ECCheckLMemOD( odText_p ); )
+EC( ECCheckBounds( pvalError_p ); )
+
+      /*
+       * Set position to start of file. Set error flag to no error
+       * so we can check it later if there's no text to write.
+       */
+    FilePos( hfilOutputFile_p, 0L, FILE_POS_START );
+    *pvalError_p = 0;
+
+      /*
+       * Set start of text selection and get text length.
+       * Make sure iSelectEnd not past end of text.
+       * Set flag indicating that we didn't reach end of text yet.
+       */
+    iSelectStart = 0;
+    iSelectEnd   = TFE_FILE_BLOCK_SIZE / 2;
+    cTextLength  = @call odText_p::MSG_VIS_TEXT_GET_TEXT_SIZE();
+    cTotalLength = cTextLength;
+    if ( iSelectEnd > cTextLength ) {
+        iSelectEnd = cTextLength;
+    }
+    booEndOfText = FALSE;
+
+      /*
+       * Save text cursor position and freeze text.
+       * Allocate memory for dataBlock so we can write out file.
+       * Lock memory right away and get pointer to block.
+       */
+    @send odText_p::MSG_VIS_TEXT_GET_SELECTION_RANGE( &uSavedCursor );
+    @send odText_p::MSG_META_SUSPEND();
+    hmemTemp = MemAlloc( TFE_FILE_BLOCK_SIZE, HF_SWAPABLE, 0 );
+EC( ECCheckMemHandle( hmemTemp ); )
+    pachText = (char*)MemLock( hmemTemp );
+EC( ECCheckBounds( pachText ); )
+
+       /*
+        * This loop copies the text from the object and
+        * writes it to the file.
+        */
+    do {
+          /*
+           * Copy block from text object and set cCharsInBlk.
+           * Convert the GEOS characters to DOS characters.
+           */
+        @send odText_p::MSG_VIS_TEXT_SELECT_RANGE( iSelectEnd,
+            iSelectStart );
+        @call odText_p::MSG_VIS_TEXT_GET_SELECTION_PTR( pachText );
+        cCharsInBlk = iSelectEnd - iSelectStart;
+        LocalGeosToDos( pachText, cCharsInBlk, '.' );
+
+          /*
+           * Search for CR and insert a LF after each one found.
+           */
+        iCurChar = 0;
+        while( iCurChar < cCharsInBlk ) {
+            if ( C_ENTER == pachText[iCurChar] ) {
+                for ( iShiftChar = cCharsInBlk;
+                      iShiftChar > iCurChar+1;
+                      iShiftChar-- ) {
+                    pachText[iShiftChar] = pachText[iShiftChar-1];
+                }
+                pachText[iCurChar+1] = C_LINEFEED;
+                iCurChar++;     /* Skip over new LF. */
+                cCharsInBlk++;  /* Increment number of characters. */
+                cTotalLength++; /* Increase total size of file. */
+            }
+            iCurChar++;         /* Advance to next character. */
+        }
+
+          /*
+           * Write text to the DOS file and check for error.
+           * If error, mark end of text TRUE.
+           */
+        if ( cCharsInBlk > 0 ) {
+            FileWrite( hfilOutputFile_p, pachText, cCharsInBlk, FALSE );
+            *pvalError_p = ThreadGetError();
+            if ( *pvalError_p ) {
+                DocErrorMessage( @acrFileWriteErrMsg );
+            }
+        }
+
+          /*
+           * Advance text selection to next block making sure not
+           * past end of text. Set booEndOfText appropriately.
+           */
+        iSelectStart += TFE_FILE_BLOCK_SIZE / 2;
+        iSelectEnd   += TFE_FILE_BLOCK_SIZE / 2;
+        if ( iSelectEnd > cTextLength ) {
+            iSelectEnd = cTextLength;
+        }
+        if ( iSelectStart >= cTextLength ) {
+            booEndOfText = TRUE;
+        }
+
+    } while( FALSE == booEndOfText );
+
+      /*
+       * Free memory block. Don't need to unlock first.
+       * Reinstate previous text selection and unfreeze it.
+       */
+    MemFree( hmemTemp );
+    @send odText_p::MSG_VIS_TEXT_SELECT_RANGE( uSavedCursor.VTR_end,
+                                               uSavedCursor.VTR_start );
+    @send odText_p::MSG_META_UNSUSPEND();
+
+      /*
+       * Check for file write errors. Truncate file and set text
+       * not user modified if no file error. Reset undo.
+       */
+    if ( *pvalError_p ) {
+        return( TRUE );
+    }
+    else {
+        FileTruncate( hfilOutputFile_p, cTotalLength, FALSE );
+        DocResetUndo();
+        @send odText_p::MSG_VIS_TEXT_SET_NOT_USER_MODIFIED();
+        return( FALSE );
+    }
+} /* DocWriteFile */
+
+/********************************************************************
+ *              Code for TFEDocumentClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE
+ ********************************************************************
+ * SYNOPSIS:     This creates an empty document.
+ * PARAMETERS:   void
+ * RETURNS:      Boolean - TRUE if error occurred
+ * SIDE EFFECTS: none
+ * STRATEGY:     Null out the text handle so Save and Revert
+ *               can check it later.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFEDocumentClass,
+    MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE {
+
+    @callsuper();
+
+      /*
+       * Set text handle to null so we can check it later.
+       */
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    pself->TFEDI_mhText = NullHandle;
+    return( FALSE );
+} /* MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     This message is sent to the GenDocument object
+ *               when a particular document is about to be displayed.
+ *               It allows the document to attach any UI objects, or
+ *               objects that should be displayed, to the GenDocument
+ *               so that the first visual update will draw everything.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Create a duplicate of the text object, and
+ *               initialize it's data structures. Add it to the
+ *               GenDocument and then read the text from the file.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version
+ *      NF      4/1/95          Adapted for Zoomer TFE
+ *******************************************************************/
+@extern method TFEDocumentClass, MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT {
+      /*
+       * pvalError_p - Error value from DocReadFile.
+       * odText      - Pointer to text object.
+       * vself       - Pointer to self.
+       */
+    word                 pvalError_p;
+    optr                 odText;
+    VisContentInstance * vself;
+
+      /*
+       * Duplicate the text object resource.
+       */
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    pself->TFEDI_mhText = ObjDuplicateResource(
+        OptrToHandle( @TFEText ), 0, 0 );
+
+      /*
+       * Set the attributes of the content to be large.
+       * Set up geometry of content so manager is not used.
+       */
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    pself->GCI_attrs  = VCNA_LARGE_DOCUMENT_MODEL
+                      | VCNA_WINDOW_COORDINATE_MOUSE_EVENTS
+                      | VCNA_SAME_WIDTH_AS_VIEW;
+    vself = ObjDerefVis( oself );
+EC( ECCheckBounds( vself ); )
+    vself->VCNI_attrs = VCNA_LARGE_DOCUMENT_MODEL
+                      | VCNA_WINDOW_COORDINATE_MOUSE_EVENTS
+                      | VCNA_SAME_WIDTH_AS_VIEW;
+    vself->VI_attrs    &= ~VA_MANAGED;
+    vself->VI_optFlags &= ~( VOF_GEOMETRY_INVALID |
+                             VOF_GEO_UPDATE_PATH );
+    vself->VI_geoAttrs |= VCGA_CUSTOM_MANAGE_CHILDREN;
+
+      /*
+       * Set up VisText object for the large document model.
+       * Call the superclass to create UI objects.
+       * Set the text object as our first visible child.
+       */
+    odText = ConstructOptr( pself->TFEDI_mhText,
+                            OptrToChunk( @TFEText ) );
+EC( ECCheckLMemOD( odText ); )
+    @send odText::MSG_VIS_TEXT_SET_VM_FILE( ClipboardGetClipboardFile() );
+    @send odText::MSG_VIS_LARGE_TEXT_CREATE_DATA_STRUCTURES();
+    @send odText::MSG_VIS_NOTIFY_GEOMETRY_VALID();
+    @callsuper();
+    @call self::MSG_VIS_ADD_CHILD( odText, CCO_FIRST );
+
+      /*
+       * Tell text to grab the target and focus.
+       * Set point size of text to current size.
+       * Set font to current font.
+       * Set the undo context for the text object.
+       * Read in text file by calling read data function.
+       */
+    @send odText::MSG_META_GRAB_TARGET_EXCL();
+    @send odText::MSG_META_GRAB_FOCUS_EXCL();
+    @send odText::MSG_VIS_TEXT_SET_POINT_SIZE( curPointSize_g,
+        TEXT_ADDRESS_PAST_END, 1 );
+    @send odText::MSG_VIS_TEXT_SET_FONT_ID( curFontID_g,
+        TEXT_ADDRESS_PAST_END, 1 );
+    @send process::MSG_GEN_PROCESS_UNDO_SET_CONTEXT( 1 );
+    DocReadFile( pself->GDI_fileHandle, odText, &pvalError_p );
+} /* MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT
+ ********************************************************************
+ * SYNOPSIS:     This message is sent to the GenDocument object when
+ *               the document is about to be closed.  It allows the
+ *               GenDocument to detach all the UI objects it attached
+ *               earlier before closing.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Tell the text object to free it's storage and
+ *               release the VM file. Then remove it from the
+ *               content and delete the block.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version
+ *      NF      4/1/95          Adapted for Zoomer TFE
+ *******************************************************************/
+@extern method TFEDocumentClass, MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT {
+      /*
+       * odText - Duplicated text object.
+       */
+    optr odText;
+
+      /*
+       * Remove the text object.
+       */
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    if ( NullHandle != pself->TFEDI_mhText ) {
+        odText = ConstructOptr( pself->TFEDI_mhText,
+                                OptrToChunk( @TFEText ) );
+EC(     ECCheckLMemOD( odText ); )
+        @send odText::MSG_VIS_REMOVE( VUM_DELAYED_VIA_APP_QUEUE );
+
+        @callsuper();
+
+          /*
+           * Free all storage, release VM file, and destroy block.
+           * Set text handle null so save and revert work okay.
+           */
+        @send odText::MSG_VIS_TEXT_FREE_ALL_STORAGE( TRUE );
+        @send odText::MSG_VIS_TEXT_SET_VM_FILE( NullHandle );
+        @send odText::MSG_VIS_DESTROY( VUM_DELAYED_VIA_APP_QUEUE );
+        pself->TFEDI_mhText = NullHandle;
+    }
+    else {
+        @callsuper();
+    }
+} /* MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_ATTACH_FAILED
+ ********************************************************************
+ * SYNOPSIS:     This message is sent to the GenDocument object when
+ *               the document could not be attached.  It allows the
+ *               GenDocument to destroy all the UI objects it attached
+ *               earlier.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Tell the text object to free it's storage and
+ *               release the VM file. Then remove it from the
+ *               content and delete the block. Don't forget to
+ *               reset text handle.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version
+ *      NF      4/1/95          Adapted for Zoomer TFE
+ *******************************************************************/
+@extern method TFEDocumentClass, MSG_GEN_DOCUMENT_ATTACH_FAILED {
+      /*
+       * odText - Duplicated text object.
+       */
+    optr odText;
+
+    @callsuper();
+
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    if ( NullHandle != pself->TFEDI_mhText ) {
+        odText = ConstructOptr( pself->TFEDI_mhText,
+                                OptrToChunk( @TFEText ) );
+EC(     ECCheckLMemOD( odText ); )
+        @send odText::MSG_VIS_TEXT_FREE_ALL_STORAGE( TRUE );
+        @send odText::MSG_VIS_TEXT_SET_VM_FILE( NullHandle );
+        @send odText::MSG_VIS_DESTROY( VUM_DELAYED_VIA_APP_QUEUE );
+        pself->TFEDI_mhText = NullHandle;
+    }
+} /* MSG_GEN_DOCUMENT_ATTACH_FAILED */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_OPEN
+ ********************************************************************
+ * SYNOPSIS:     This message is sent to the GenDocument object when
+ *               the document is being opened.  It allows the
+ *               GenDocument to load the document from disk.
+ * PARAMETERS:   word *                 fileOrError
+ *               DocumentCommonParams * params
+ * RETURNS:      Boolean - TRUE if error occurred
+ * SIDE EFFECTS: none
+ * STRATEGY:     Make sure nothing went wrong with open.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFEDocumentClass, MSG_GEN_DOCUMENT_OPEN {
+
+EC( ECCheckBounds( fileOrError ); )
+/* NF - params is not a valid pointer.
+EC( ECCheckBounds( params ); ) */
+
+      /*
+       * Check if error occurred during open.
+       * If so, cancel the open. Return error status.
+       * (Don't try to do MSG_GEN_DESTROY, that gives an error.)
+       */
+    if ( @callsuper() ) {
+        @send self::MSG_GEN_REMOVE( VUM_NOW, 0 );
+        return( TRUE );
+    }
+    else {
+        return( FALSE );
+    }
+} /* MSG_GEN_DOCUMENT_OPEN */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_PHYSICAL_REVERT
+ ********************************************************************
+ * SYNOPSIS:     Return to the last-saved version of the file.
+ * PARAMETERS:   word * error
+ * RETURNS:      Boolean - TRUE if error occurred
+ * SIDE EFFECTS: none
+ * STRATEGY:     Simply read in the file.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFEDocumentClass, MSG_GEN_DOCUMENT_PHYSICAL_REVERT {
+      /*
+       * odText - Duplicated text object.
+       * error  - Error returned from DocReadFile.
+       */
+    optr odText;
+
+EC( ECCheckBounds( error ); )
+
+    @callsuper();
+
+       /*
+        * Read the text file into the text object.
+        */
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    if ( NullHandle != pself->TFEDI_mhText ) {
+        odText = ConstructOptr( pself->TFEDI_mhText,
+                                OptrToChunk( @TFEText ) );
+EC(     ECCheckLMemOD( odText ); )
+        return( DocReadFile( pself->GDI_fileHandle, odText, error ) );
+    }
+    else {
+        return( FALSE );
+    }
+} /* MSG_GEN_DOCUMENT_PHYSICAL_REVERT */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_PHYSICAL_SAVE,
+ *              MSG_GEN_DOCUMENT_PHYSICAL_UPDATE
+ ********************************************************************
+ * SYNOPSIS:     Save text to file.
+ * PARAMETERS:   word * error
+ * RETURNS:      Boolean - TRUE if error occurred.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Basically call DocWriteFile routine.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFEDocumentClass, MSG_GEN_DOCUMENT_PHYSICAL_SAVE,
+                                 MSG_GEN_DOCUMENT_PHYSICAL_UPDATE {
+      /*
+       * odText - Duplicated text object.
+       */
+    optr odText;
+
+EC( ECCheckBounds( error ); )
+
+      /*
+       * Superclass returns a bad error value.
+       */
+    @callsuper();
+
+      /*
+       * Make sure there's a text object.
+       * If there's a text object, write it to file.
+       */
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    if ( NullHandle != pself->TFEDI_mhText ) {
+        odText = ConstructOptr( pself->TFEDI_mhText,
+                                OptrToChunk( @TFEText ) );
+EC(     ECCheckLMemOD( odText ); )
+        return( DocWriteFile( pself->GDI_fileHandle, odText, error ) );
+    }
+    else {
+        return( FALSE );
+    }
+} /* MSG_GEN_DOCUMENT_PHYSICAL_SAVE,
+   * MSG_GEN_DOCUMENT_PHYSICAL_UPDATE */
+
+/********************************************************************
+ *              MSG_GEN_DOCUMENT_PHYSICAL_SAVE_AS_FILE_HANDLE
+ ********************************************************************
+ * SYNOPSIS:     Save text to a newly created file.
+ * PARAMETERS:   word *     error
+ *               FileHandle file
+ * RETURNS:      Boolean - TRUE if error occurred.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call DocWriteFile routine with the passed
+ *               file handle.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version
+ *      NF      4/1/95          Adapted for Zoomer TFE
+ *******************************************************************/
+@extern method TFEDocumentClass,
+          MSG_GEN_DOCUMENT_PHYSICAL_SAVE_AS_FILE_HANDLE {
+      /*
+       * odText - Pointer to TFEText.
+       */
+    optr odText;
+
+EC( ECCheckBounds( error ); )
+EC( ECCheckFileHandle( file ); )
+
+    @callsuper(); /* Returns a bad error value. */
+
+       /*
+        * Check that there's a text object. Get a pointer to it.
+        * Save text using passed file handle.
+        */
+    pself = ObjDerefGen( oself );
+EC( ECCheckBounds( pself ); )
+    if ( NullHandle != pself->TFEDI_mhText ) {
+        odText = ConstructOptr( pself->TFEDI_mhText,
+                                OptrToChunk( @TFEText ) );
+EC(     ECCheckLMemOD( odText ); )
+        return( DocWriteFile( file, odText, error ) );
+    }
+    else {
+        return( FALSE );
+    }
+} /* MSG_GEN_DOCUMENT_PHYSICAL_SAVE_AS_FILE_HANDLE */
+
+
+/********************************************************************
+ *              Some of the Code for TFETextClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_VIS_TEXT_FREE_ALL_STORAGE
+ ********************************************************************
+ * SYNOPSIS:     Free the space we allocated eariler.
+ * CALLED BY:    MSG_GEN_DOCUMENT_DESTROY_UI_FOR_DOCUMENT
+ * PARAMETERS:   Boolean removeElementArrays
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Set the chunk header to default values, set the
+ *               flags for the text object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version
+ *      NF      4/1/95          Adapted for Zoomer TFE
+ *******************************************************************/
+@extern method TFETextClass, MSG_VIS_TEXT_FREE_ALL_STORAGE {
+      /*
+       * cahp     - Pointer to chunk array header.
+       * vself    - Pointer to our instance data.
+       * odText   - Duplicated text region array.
+       * booError - TRUE if there was an error.
+       */
+    ChunkArrayHeader * cahp;
+    VisTextInstance  * vself;
+    optr               odRegionArray;
+    Boolean            booError;
+
+    @callsuper();
+
+      /*
+       * Free the extra space that VisLargeText used.
+       */
+    odRegionArray = ConstructOptr( OptrToHandle( oself ),
+                                   OptrToChunk( @TFETextRegionArray ) );
+EC( ECCheckLMemOD( odRegionArray ); )
+    MemLock( OptrToHandle( oself ) );
+    booError = LMemReAlloc( odRegionArray, sizeof( ChunkArrayHeader ) );
+EC_ERROR_IF( booError, TFE_ERR_LMEM_REALLOC_FAILED );
+    MemUnlock( OptrToHandle( oself ) );
+
+      /*
+       * Reset the chunk header to default values.
+       */
+    cahp = LMemDeref( odRegionArray );
+EC( ECCheckBounds( cahp ); )
+    cahp->CAH_count       = 0;
+    cahp->CAH_elementSize = sizeof( VisLargeTextRegionArrayElement );
+    cahp->CAH_curOffset   = 0;
+    cahp->CAH_offset      = sizeof( ChunkArrayHeader );
+
+      /*
+       * Set text object to small model and invalidate it visually.
+       */
+    vself = ObjDerefVis( oself );
+EC( ECCheckBounds( vself ); )
+    vself->VTI_storageFlags &= ~VTSF_LARGE;
+    vself->VI_optFlags      |= VOF_GEOMETRY_INVALID;
+} /* MSG_VIS_TEXT_FREE_ALL_STORAGE */
+

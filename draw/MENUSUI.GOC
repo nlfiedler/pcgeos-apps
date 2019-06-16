@@ -1,0 +1,462 @@
+/********************************************************************
+ *
+ *      Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      Attributes Menu Objects
+ *              Text Menu Objects
+ *              Transform Menu Objects
+ * FILE:        menusUI.goc
+ *
+ * AUTHORS:     Allen Schoonmaker
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Converted to Zoomer application and
+ *                              added more functionality.
+ *      NF      10/25/95        Combined tranUI.goc, attrUI.goc, and
+ *                              textUI.goc into this one source file
+ *                              and resource.
+ *      NF      2/26/96         Made compilable for OmniGo.
+ *
+ * DESCRIPTION:
+ *      This is a GeoDraw-like program made specifically for the
+ *      Zoomer and other GEOS-based PDAs.
+ *
+ *      This file contains the objects for the attributes, text,
+ *      and transform menus.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <grobj.goh>
+    @include <objects/text/tctrlc.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+
+/********************************************************************
+ *                 External Objects
+ *  These are objects outside this file that are connected to
+ *  objects in this file. We don't want to include global.goh
+ *  because then we'll have duplicate object declarations.
+ *******************************************************************/
+
+/********************************************************************
+ *              UI Object Resources
+ *******************************************************************/
+
+/********************************************************************
+ *              Menus Resource
+ * Contains: Text menu
+ *           Transform menu
+ *           Attributes menu
+ *******************************************************************/
+@start Menus;
+
+  /*
+   * Attributes menu
+   */
+@object GenInteractionClass DAttrsGroup = {
+    GI_states = @default & ~GS_USABLE;
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'A', "Attributes";
+    @localize { "Menu for changing properties of objects." };
+    GI_comp = @DAreaAttrGroup,
+              @DLineAttrGroup,
+              @DBackgroundControl,
+              @DStyleSheetControl,
+              @DGradientFillGroup,
+              @DArcControl,
+              @DAttrsSubGroup1;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+
+@object GenInteractionClass DAreaAttrGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'A', "Area Attributes";
+    @localize { "Dialog for changing properties of areas." };
+    GI_comp = @DAreaColorControl,
+              @DAreaAttrControl;
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object GrObjAreaColorSelectorClass DAreaColorControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GrObjAreaAttrControlClass DAreaAttrControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+
+@object GenInteractionClass DLineAttrGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'L', "Line Attributes";
+    @localize { "Dialog for changing properties of lines." };
+    GI_comp = @DLineColorControl,
+              @DLineAttrControl;
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object GrObjLineColorSelectorClass DLineColorControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GrObjLineAttrControlClass DLineAttrControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+
+@object GrObjBackgroundColorSelectorClass DBackgroundControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'B', "Background color";
+    @localize { "Dialog for changing the background color." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+
+@object GrObjStyleSheetControlClass DStyleSheetControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'S', "Graphic Style Sheets";
+    @localize { "Menu for maintaining graphic style sheets." };
+    GII_visibility = GIV_POPUP;
+}
+
+
+@object GenInteractionClass DGradientFillGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'G', "Gradient Fill";
+    @localize { "Menu with gradient fill options." };
+    GI_comp = @DGradientFillControl,
+              @DGradientStartColor,
+              @DGradientEndColor;
+    GII_visibility = GIV_POPUP;
+}
+
+@object GrObjGradientFillControlClass DGradientFillControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'G', "Gradient Fill";
+    @localize { "Dialog for changing aspects of the gradient fill." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object GrObjStartingGradientColorSelectorClass DGradientStartColor = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'S', "Starting Color";
+    @localize { "Dialog for setting the starting color of the \
+gradient fill." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object GrObjEndingGradientColorSelectorClass DGradientEndColor = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'E', "Ending Color";
+    @localize { "Dialog for setting the ending color of the \
+gradient fill." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+
+@object GrObjArcControlClass DArcControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'r', "Arcs";
+    @localize { "Dialog for changing properties of arcs." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+
+@object GenInteractionClass DAttrsSubGroup1 = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DSetDefaultAttrsControl;
+}
+
+@object GrObjDefaultAttributesControlClass DSetDefaultAttrsControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'D', "Set Default Attributes";
+    @localize { "Sets the default attributes to that of the \
+currently selected object." };
+}
+
+
+
+  /*
+   * Transform menu
+   */
+@object GenInteractionClass DTranGroup = {
+    GI_states = @default & ~GS_USABLE;
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'n', "Transform";
+    @localize { "Menu for fliping, scaling, etc. objects." };
+    GI_comp = @DFlipControl,
+              @DScaleControl,
+              @DRotateControl,
+              @DSkewControl,
+              @DTransformControl,
+              @DTranSubGroup1;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+@object GrObjFlipControlClass DFlipControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'F', "Flip";
+    @localize { "Dialog for flipping an object." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+@object GrObjScaleControlClass DScaleControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'S', "Scale";
+    @localize { "Dialog for scaling an object." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+@object GrObjRotateControlClass DRotateControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'R', "Rotate";
+    @localize { "Dialog for rotating an object." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+@object GrObjSkewControlClass DSkewControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'k', "Skew";
+    @localize { "Dialog for skewing an object." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+@object GrObjTransformControlClass DTransformControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'U', "Untransform";
+    @localize { "Makes object the way it was before it was flipped, \
+scaled, etc." };
+}
+
+@object GenInteractionClass DTranSubGroup1 = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DConvertControl;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+@object GrObjConvertControlClass DConvertControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'C', "Convert";
+    @localize { "Dialog for converting objects to bitmaps." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_ORGANIZATIONAL;
+}
+
+
+
+  /*
+   * Text attributes menu
+   */
+@object GenInteractionClass DTextGroup = {
+    GI_states = @default & ~GS_USABLE;
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'T', "Text";
+    @localize { "Menu for changing properties of text objects." };
+    GI_comp = @DFontControl,
+              @DSizeControl,
+@ifndef OMNIGO
+              @DStyleControl,
+@endif
+              @DTextFGColorControl,
+              @DTextBGColorControl,
+              @DCharAttrControl,
+              @DTextSub1,
+              @DFindReplaceControl;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+@object FontControlClass DFontControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'F', "Fonts";
+    @localize { "Menu for setting the font used by text objects." };
+    GII_visibility = GIV_POPUP;
+}
+
+@object PointSizeControlClass DSizeControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'z', "Sizes";
+    @localize { "Menu for setting the point size used by text objects." };
+    GII_visibility = GIV_POPUP;
+}
+
+@ifndef OMNIGO
+
+@object TextStyleControlClass DStyleControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'S', "Styles";
+    @localize { "Menu for setting the styles used by text objects." };
+    GII_visibility = GIV_POPUP;
+}
+
+@endif
+
+@object CharFGColorControlClass DTextFGColorControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'T', "Text Color";
+    @localize { "Menu for setting the color used by text objects." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object CharBGColorControlClass DTextBGColorControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'B', "Text Background Color";
+    @localize { "Menu for setting the background color used by \
+text objects." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object FontAttrControlClass DCharAttrControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'A', "Character Attributes";
+    @localize { "Dialog for changing character properties." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object GenInteractionClass DTextSub1 = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DParagraphMenu,
+              @DStyleSheetsControl;
+}
+
+@object GenInteractionClass DParagraphMenu = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'P', "Paragraph";
+    @localize { "Menu for changing paragraph properties." };
+    GI_comp = @DJustificationControl,
+              @DLineSpacingControl,
+              @DParaSpacingControl,
+              @DMarginControl,
+              @DTabControl,
+              @DDefaultTabControl,
+              @DBorderMenu;
+    GII_visibility = GIV_POPUP;
+}
+
+@object JustificationControlClass DJustificationControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'J', "Justification";
+    @localize { "Menu for changing text justification." };
+    GII_visibility = GIV_POPUP;
+}
+
+@object LineSpacingControlClass DLineSpacingControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'L', "Line Spacing";
+    @localize { "Menu for changing text line spacing." };
+    GII_visibility = GIV_POPUP;
+}
+
+@object ParaSpacingControlClass DParaSpacingControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'S', "Paragraph Spacing";
+    @localize { "Menu for changing text paragraph spacing." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object ParaBGColorControlClass DParaColorControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'P', "Paragraph Color";
+    @localize { "Menu for changing text paragraph color." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object MarginControlClass DMarginControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'I', "Indents";
+    @localize { "Menu for changing text paragraph indentation." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object TabControlClass DTabControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'T', "Tabs";
+    @localize { "Menu for changing text paragraph tabs." };
+    GII_visibility = GIV_DIALOG;
+}
+
+@object DefaultTabsControlClass DDefaultTabControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'D', "Default Tabs";
+    @localize { "Menu for changing text default tabs." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object GenInteractionClass DBorderMenu = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'B', "Borders";
+    @localize { "Menu to change borders around paragraphs." };
+    GI_comp = @DBorderControl,
+              @DBorderColorControl;
+    GII_visibility = GIV_POPUP;
+}
+
+@object BorderControlClass DBorderControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GII_visibility = GIV_SUB_GROUP;
+}
+
+@object BorderColorControlClass DBorderColorControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'B', "Border Color";
+    @localize { "Dialog for changing border colors." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object TextStyleSheetControlClass DStyleSheetsControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'e', "Text Style Sheets";
+    @localize { "Menu for managing text style sheets." };
+    GII_visibility = GIV_POPUP;
+}
+
+  /* Provides Find and Replace functions. */
+@object SearchReplaceControlClass DFindReplaceControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'F', "Find and Replace";
+    GI_kbdAccelerator = control 'F';
+    @localize { "Look for a word in the text, with a replace option." };
+    GII_visibility = GIV_DIALOG;
+    ATTR_SEARCH_CONTROL_INTERACT_ONLY_WITH_TARGETED_TEXT_OBJECTS;
+}
+
+@end Menus;
+

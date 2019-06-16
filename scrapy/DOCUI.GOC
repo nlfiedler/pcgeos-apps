@@ -1,0 +1,196 @@
+/********************************************************************
+ *
+ * PROJECT:     Scrapy
+ * MODULE:      Document Objects
+ * FILE:        docUI.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/8/95          Initial version
+ *      NF      8/16/96         Added graphics support
+ *
+ * DESCRIPTION:
+ *      This file contains all the document related objects and
+ *      class/method declarations.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/vltextc.goh>
+    @include <objects/clipbrd.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl SBDocumentClass;
+    @classdecl SBTextClass;
+
+/********************************************************************
+ *              Global Variable Definitions
+ * These had to be in this file because of compiler error.
+ *******************************************************************/
+      /*
+       * fatals_g - Fold our error constants into GEOS errors.
+       *            For some reason this can't be in appUI.goc.
+       */
+    FatalErrors fatals_g;
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+      /* DOCUMENT.GOC */
+    @extern method SBDocumentClass,
+                       MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE;
+    @extern method SBDocumentClass,
+                       MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT;
+    @extern method SBDocumentClass,
+                       MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT;
+    @extern method SBDocumentClass, MSG_GEN_DOCUMENT_ATTACH_FAILED;
+    @extern method SBDocumentClass, MSG_GEN_DOCUMENT_OPEN;
+/*  This causes an error in glue.
+    @extern method SBTextClass, MSG_VIS_TEXT_FREE_ALL_STORAGE;
+*/
+
+      /* DOCMETA.GOC */
+    @extern method SBDocumentClass, MSG_META_CLIPBOARD_CUT;
+    @extern method SBDocumentClass, MSG_META_DELETE;
+    @extern method SBDocumentClass, MSG_META_CLIPBOARD_COPY;
+    @extern method SBDocumentClass, MSG_META_CLIPBOARD_PASTE;
+    @extern method SBDocumentClass,
+        MSG_META_CLIPBOARD_NOTIFY_NORMAL_TRANSFER_ITEM_CHANGED;
+    @extern method SBDocumentClass, MSG_META_GAINED_TARGET_EXCL;
+    @extern method SBDocumentClass, MSG_META_LOST_TARGET_EXCL;
+    @extern method SBDocumentClass, MSG_META_START_MOVE_COPY;
+    @extern method SBDocumentClass, MSG_META_PTR;
+    @extern method SBDocumentClass, MSG_META_END_MOVE_COPY;
+    @extern method SBDocumentClass,
+        MSG_META_CLIPBOARD_NOTIFY_QUICK_TRANSFER_CONCLUDED;
+
+      /* DOCSB.GOC */
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_ADD_ITEM;
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_DISPLAY_ITEM;
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_SET_ITEM_NAME;
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_PREV_ITEM;
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_NEXT_ITEM;
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_GOTO_ITEM;
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_LIST_APPLY;
+    @extern method SBDocumentClass, MSG_SB_DOCUMENT_LIST_MONIKER_QUERY;
+
+/********************************************************************
+ *              External Objects
+ *******************************************************************/
+    @extern object @SBDocumentControl;
+    @extern object @SBDisplayGroup;
+
+/********************************************************************
+ *              DocumentGroup Resource
+ * Holds the document group object, as well as any dynamically
+ * instantiated document objects.
+ *******************************************************************/
+@start DocGroup;
+
+@object GenDocumentGroupClass SBDocumentGroup = {
+    GDGI_untitledName = "Scrapy Untitled";
+    @localize { "Name of a new untitled document." };
+    GDGI_documentClass = (ClassStruct*)&SBDocumentClass;
+    GDGI_protocolMajor = SB_DOCUMENT_PROTOCOL_MAJOR;
+    GDGI_protocolMinor = SB_DOCUMENT_PROTOCOL_MINOR;
+    GDGI_documentControl = @SBDocumentControl;
+    GDGI_genDisplayGroup = @SBDisplayGroup;
+    GDGI_genDisplay      = @SBDisplay;
+    GDGI_genView         = @SBView;
+}
+
+@end DocGroup;
+
+/********************************************************************
+ *              Display Resource
+ * This is a template resource that gets duplicated for each
+ * new document. It has the display and view objects.
+ *******************************************************************/
+@start Display, notDetachable;
+
+  /* Display that holds the view. */
+@object GenDisplayClass SBDisplay = {
+    GI_states = @default & ~GS_USABLE;
+    GI_comp = @SBView;
+    ATTR_GEN_DISPLAY_NOT_MINIMIZABLE;
+}
+
+  /* View that holds the text object. */
+@object GenViewClass SBView = {
+    GI_attrs = @default | GA_TARGETABLE;
+    GVI_attrs = @default | GVA_CONTROLLED
+                         | GVA_WINDOW_COORDINATE_MOUSE_EVENTS
+                         | GVA_FOCUSABLE;
+    GVI_horizAttrs = @default | GVDA_SCROLLABLE;
+    GVI_vertAttrs  = @default | GVDA_SCROLLABLE;
+    ATTR_GEN_VIEW_DOES_NOT_ACCEPT_TEXT_INPUT;
+    HINT_DEFAULT_TARGET;
+    HINT_DEFAULT_FOCUS;
+}
+
+@end Display;
+
+/********************************************************************
+ *              Document Resource
+ * This gets duplicated for each new document. It holds the
+ * VisLargeText, GrObjBody, and GrObjAM objects.
+ *******************************************************************/
+@start Document, notDetachable;
+
+@object SBTextClass SBText = {
+  VTI_state = @default | VTS_TARGETABLE;
+/*
+  VTI_charAttrRuns = @SBCharAttrRuns;
+  VTI_paraAttrRuns = @SBParaAttrRuns;
+  VTI_storageFlags = VTSF_MULTIPLE_CHAR_ATTRS
+                   | VTSF_MULTIPLE_PARA_ATTRS;
+*/
+  VTI_charAttrRuns = ( ( VTDF_URW_SANS << VTDCA_FONT_OFFSET )
+                     | ( VTDS_12 << VTDCA_SIZE_OFFSET ) );
+  VTI_features = @default | VTF_ALLOW_SMART_QUOTES;
+  VTI_output = process;
+  VLTI_displayMode = VLTDM_DRAFT_WITH_STYLES;
+  VLTI_attrs = VLTA_EXACT_HEIGHT;
+  VLTI_regionArray = SBTextRegionArray;
+}
+
+@chunk ChunkArrayHeader SBTextRegionArray = {
+    0, sizeof( VisLargeTextRegionArrayElement ),
+    0, sizeof( ChunkArrayHeader )
+};
+
+/* Multiple text attribute stuff.
+@CHAR_ATTR_ELEMENT_ARRAY_HEADER SBCharAttrElements = {
+    CHAR_ATTR_FONT_SIZE( FID_DTC_URW_SANS, 12 )
+};
+
+@RUN_ARRAY_HEADER( SBCharAttrElements ) SBCharAttrRuns = {
+    TRAE_ALL( 0 ),
+    TRAE_END
+};
+
+@chunk SBParaAttrArray SBParaAttrElements = {
+    { { { 1, 0, 0, sizeof( TextElementArrayHeader ) },
+        EA_FREE_LIST_TERMINATOR },
+      TAT_PARA_ATTRS, 0 },
+    sizeof( TextElementArrayHeader ) + 2,
+    PARA_ATTR_STYLE_JUST_LEFT_RIGHT_PARA( 1, 0, J_LEFT, 0, 0, 0 )
+};
+
+@RUN_ARRAY_HEADER( SBParaAttrElements ) SBParaAttrRuns = {
+    TRAE_ALL( 0 ),
+    TRAE_END
+};
+*/
+
+@end Document;
+

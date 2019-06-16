@@ -1,0 +1,77 @@
+/********************************************************************
+ *
+ * PROJECT:     Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:      View Object Methods
+ * FILE:        view.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/2/96          Initial version
+ *
+ * DESCRIPTION:
+ *      These are the function definitions and method definitions
+ *      for the view object.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Internal/Jedi/jtable.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              Code for FMViewClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_VIEW_SCROLL_UP
+ ********************************************************************
+ * SYNOPSIS:	 Subclass this message to prevent normal GenView style
+ *		 of scrolling.  Instead send the scroll message to the
+ *		 table object so only the table contents scroll.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Send scroll message to the main table object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      4/3/95          Initial version
+ *      NF      9/2/96          Changed to FM
+ *******************************************************************/
+@extern method FMViewClass, MSG_GEN_VIEW_SCROLL_UP {
+
+    @send FMDirectory::MSG_TABLE_SCROLL_SINGLE_UP();
+} /* MSG_GEN_VIEW_SCROLL_UP */
+
+/********************************************************************
+ *              MSG_GEN_VIEW_SCROLL_DOWN
+ ********************************************************************
+ * SYNOPSIS:	 Subclass this message to prevent normal GenView style
+ *		 of scrolling.  Instead send the scroll message to the
+ *		 table object so only the table contents scroll.
+ * PARAMETERS:	 void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Send scroll message to the main table object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      4/3/95          Initial version
+ *      NF      9/2/96          Changed to FM
+ *******************************************************************/
+@extern method FMViewClass, MSG_GEN_VIEW_SCROLL_DOWN {
+
+    @send FMDirectory::MSG_TABLE_SCROLL_SINGLE_DOWN();
+} /* MSG_GEN_VIEW_SCROLL_DOWN */
+

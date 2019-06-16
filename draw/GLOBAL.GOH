@@ -1,0 +1,93 @@
+/********************************************************************
+ *
+ *      Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      Globals Header
+ * FILE:        global.goh
+ *
+ * AUTHORS:     Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *      NF      2/26/96         Made compilable for OmniGo.
+ *
+ * DESCRIPTION:
+ *      This file contains global variables, objects, and funtions.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              Object Declarations
+ *******************************************************************/
+      /* appUI.goc objects */
+    @extern object @DApp;
+    @extern object @DPrimary;
+    @extern object @DPrintControl;
+
+      /* docUI.goc objects */
+    @extern object @DDocumentGroup;
+    @extern object @DGrObjHead;
+    @extern object @DGrObjBody;
+    @extern object @DGOAM;
+    @extern object @DTopInteraction;
+    @extern object @DVertView;
+    @extern object @DVertRuler;
+    @extern object @DCornerView;
+    @extern object @DView;
+
+      /* menusUI.goc objects */
+    @extern object @DAttrsGroup;
+    @extern object @DAreaAttrControl;
+    @extern object @DAreaColorControl;
+    @extern object @DLineAttrGroup;
+    @extern object @DLineColorControl;
+    @extern object @DLineAttrControl;
+    @extern object @DBackgroundControl;
+    @extern object @DStyleSheetControl;
+    @extern object @DGradientFillControl;
+    @extern object @DGradientStartColor;
+    @extern object @DGradientEndColor;
+    @extern object @DArcControl;
+    @extern object @DSetDefaultAttrsControl;
+    @extern object @DTranGroup;
+    @extern object @DFlipControl;
+    @extern object @DScaleControl;
+    @extern object @DRotateControl;
+    @extern object @DSkewControl;
+    @extern object @DTransformControl;
+    @extern object @DConvertControl;
+    @extern object @DTextGroup;
+    @extern object @DDepthControl;
+    @extern object @DNudgeControl;
+    @extern object @DAlignControl;
+    @extern object @DAlignToGridControl;
+    @extern object @DGroupControl;
+    @extern object @DFontControl;
+    @extern object @DSizeControl;
+    @extern object @DStyleControl;
+    @extern object @DTextFGColorControl;
+    @extern object @DTextBGColorControl;
+    @extern object @DCharAttrControl;
+    @extern object @DJustificationControl;
+    @extern object @DLineSpacingControl;
+    @extern object @DParaSpacingControl;
+    @extern object @DMarginControl;
+    @extern object @DParaColorControl;
+    @extern object @DTabControl;
+    @extern object @DDefaultTabControl;
+    @extern object @DBorderControl;
+    @extern object @DBorderColorControl;
+    @extern object @DStyleSheetsControl;
+    @extern object @DFindReplaceControl;
+
+/********************************************************************
+ *              Global Function Prototypes
+ *******************************************************************/
+

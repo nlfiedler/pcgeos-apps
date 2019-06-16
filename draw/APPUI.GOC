@@ -1,0 +1,668 @@
+/********************************************************************
+ *
+ *      Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      Objects Module
+ * FILE:        appUI.goc
+ *
+ * AUTHORS:     Allen Schoonmaker
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Converted to Zoomer application and
+ *                              added more functionality.
+ *      NF      2/26/96         Made compilable for OmniGo.
+ *
+ * DESCRIPTION:
+ *      This is a GeoDraw-like program made specifically for the
+ *      Zoomer and other GEOS-based devices.
+ *
+ *      This file contains the primary static objects.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/gviewcc.goh>
+/*
+    @include <objects/bitmapc.goh>
+*/
+    @include <spool.goh>
+    @include <grobj.goh>
+    @include <ruler.goh>
+    #include <print.h>
+    @include "app.goh"
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              Class Declarations
+ *  Declare classes for this file.
+ *******************************************************************/
+    @classdecl DProcessClass, neverSaved;
+    @classdecl DRulerShowControlClass;
+
+/********************************************************************
+ *              Method Declarations
+ *  Need these, otherwise the methods won't execute. It will
+ *  compile without error, but the code in the methods will never
+ *  be executed without these declarations.
+ *******************************************************************/
+    @extern method DProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION;
+    @extern method DProcessClass, MSG_META_SAVE_OPTIONS;
+
+    @extern method DRulerShowControlClass, MSG_RSCC_CHANGE_STATE;
+
+/********************************************************************
+ *              External Objects
+ *  These are objects outside this file that are connected to
+ *  objects in this file. We don't want to include global.goh
+ *  because then we'll have duplicate object declarations.
+ *******************************************************************/
+    @extern object @DDocumentGroup;
+
+/********************************************************************
+ *              Object Resources
+ *  These are the static objects that are part of the application
+ *  and GenPrimary objects.
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start AppResource;
+
+  /* Object which system communicates with. */
+@object GenApplicationClass DApp = {
+    GI_visMoniker = list { @DTextMoniker }
+    GI_comp = @DPrimary,
+              @DObjectToolControl;
+/*
+              @DBitmapToolControl,
+*/
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+             @DPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_APP_STARTUP ) =
+             @DDocumentControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, MGCNLT_ACTIVE_LIST ) =
+             @DDocumentControl,
+             @DPrintControl,
+             @DViewControl,
+             @DRulerTypeControl,
+             @DRulerShowControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_SELF_LOAD_OPTIONS ) =
+             @DDocumentControl,
+             @DPrintControl,
+             @DPageSizeControl,
+             @DViewControl,
+             @DEditControl,
+             @DObjectToolControl,
+/*
+             @DBitmapToolControl,
+*/
+             @DToolBoxControl,
+             @DHandlesControl,
+             @DDuplicateControl,
+             @DCustomDuplicateControl,
+             @DPasteInsideControl,
+             @DMoveInsideControl,
+             @DHideControl,
+             @DCreateControl,
+             @DCustomCreateControl,
+             @DRulerShowControl,
+             @DRulerTypeControl,
+/*
+             @DRulerGridControl,
+             @DRulerGuideControl,
+*/
+             @DDraftModeControl,
+             @DDepthControl,
+             @DNudgeControl,
+             @DAlignControl,
+/*
+             @DAlignToGridControl,
+*/
+             @DGroupControl;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_STARTUP_LOAD_OPTIONS ) =
+             @DToolBoxControl;
+    ATTR_GEN_INIT_FILE_CATEGORY = INIT_CATEGORY;
+    ATTR_GEN_APPLICATION_PRINT_CONTROL = @DPrintControl;
+}
+
+@visMoniker DTextMoniker = "Draw";
+@localize { "Name of the program that appears on the title bar." };
+
+@end AppResource;
+
+/********************************************************************
+ *              Interface Resource
+ *******************************************************************/
+@start Interface;
+
+   /* Primary window */
+@object GenPrimaryClass DPrimary = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DFileGroup,
+              @DEditGroup,
+              @DViewGroup,
+              @DOptsGroup,
+              @DArrangeGroup,
+              @DToolbar,
+              @DDisplayGroup;
+    ATTR_GEN_HELP_CONTEXT = "TOC";
+    HINT_PRIMARY_FULL_SCREEN;
+}
+
+  /* File menu with Exit trigger */
+@object GenInteractionClass DFileGroup = {
+@ifdef OMNIGO
+    GI_visMoniker = "File";
+    @localize { "Name of the menu containing the document controls, \
+like Switch Document and Close, etc." };
+@endif
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DDocumentControl,
+@ifndef DESKTOP
+              @DSaveTrigger,
+@endif
+              @DPrintControl,
+              @DAboutBox;
+    GII_visibility = GIV_POPUP;
+@ifndef OMNIGO
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_FILE_MENU );
+@endif
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Document control UI */
+@object GenDocumentControlClass DDocumentControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GDCI_documentToken = { "DOC", 16426 };
+    GDCI_noNameText = "No Document";
+    @localize { "This says that there's no document opened yet." };
+    GDCI_features = @default &
+                    ~( GDCF_SUPPORTS_TEMPLATES
+                     | GDCF_SUPPORTS_USER_SETTABLE_EMPTY_DOCUMENT
+                     | GDCF_SUPPORTS_USER_MAKING_SHARED_DOCUMENTS
+                     | GDCF_SUPPORTS_USER_SETTABLE_DEFAULT_DOCUMENT );
+    GDCI_documentGroup = DDocumentGroup;
+    GDCI_enableDisableList = DDocEnableList;
+}
+
+  /* These objects become enabled when a document is opened. */
+@chunk optr DDocEnableList[] = {
+    @DPrintControl,
+@ifndef DESKTOP
+    @DSaveTrigger,
+@endif
+    @DPageSizeControl,
+    @DRulerShowControl,
+    @DRulerTypeControl,
+/*
+    @DBitmapToolControl,
+    @DRulerGridControl,
+    @DRulerGuideControl
+*/
+};
+
+@ifndef DESKTOP
+
+  /* Causes open files to be saved. */
+@object GenTriggerClass DSaveTrigger = {
+    GI_states = @default & ~GS_ENABLED;
+    GI_visMoniker = "Save";
+    @localize { "Causes current document to be saved." };
+    GTI_destination = @DDocumentControl;
+    GTI_actionMsg = MSG_GEN_DOCUMENT_CONTROL_INITIATE_SAVE_DOC;
+}
+
+@endif
+
+  /* Print control UI */
+@object PrintControlClass DPrintControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    PCI_attrs = @default & ~( PCA_PAGE_CONTROLS
+                            | PCA_VERIFY_PRINT
+                            | PCA_TEXT_MODE )
+              | PCA_MARK_APP_BUSY;
+    PCI_output = ( TO_APP_MODEL );
+    PCI_docSizeInfo = { ( 7.5 * 72 ), ( 10 * 72 ), PT_PAPER,
+                        { ( 0.5 * 72 ), ( 0.5 * 72 ),
+                          ( 0.5 * 72 ), ( 0.5 * 72 ) } };
+    ATTR_GEN_CONTROL_APP_UI = ( @DPageSizeControl );
+}
+
+  /* Page Size Control UI */
+@object PageSizeControlClass DPageSizeControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_states = @default & ~GS_USABLE;
+    GI_visMoniker = 'g', "Page Size";
+    @localize { "Dialog for changing the document size and margins." };
+    GCI_output = ( TO_APP_MODEL );
+    PZCI_attrs = @default | PZCA_LOAD_SAVE_OPTIONS;
+    ATTR_GEN_CONTROL_REQUIRE_UI = { PSIZECF_MARGINS
+                                  | PSIZECF_CUSTOM_SIZE
+                                  | PSIZECF_LAYOUT
+                                  | PSIZECF_SIZE_LIST
+                                  | PSIZECF_PAGE_TYPE };
+}
+
+  /* Credits and copyright messages. */
+@object GenInteractionClass DAboutBox = {
+    GI_visMoniker = "About";
+    @localize { "Dialog that displays copyright information." };
+    GI_comp = @DAboutText1,
+              @DAboutText2,
+              @DAboutText3,
+              @DAboutText4,
+              @DAboutText5,
+              @DAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+    ATTR_GEN_HELP_CONTEXT = "Credits";
+}
+
+@object GenGlyphClass DAboutText1 = {
+    GI_visMoniker = "Draw!";
+}
+
+@object GenGlyphClass DAboutText2 = {
+    GI_visMoniker = "Blue Marsh Softworks, 1996";
+}
+
+@object GenGlyphClass DAboutText3 = {
+    GI_visMoniker = "Portions of this program are";
+}
+
+@object GenGlyphClass DAboutText4 = {
+    GI_visMoniker = "Copyright © Geoworks 1993, 1994";
+}
+
+@object GenGlyphClass DAboutText5 = {
+    GI_visMoniker = "and used by permission.";
+}
+
+ /* Makes About box go away. */
+@object GenTriggerClass DAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+@if ERROR_CHECK
+
+  /* Feature for debugging on Zoomer - Forces program to exit. */
+@object GenTriggerClass DExitTrigger = {
+    GI_visMoniker = "Exit";
+    @localize { "This will exit the program." };
+    GTI_destination = DApp;
+    GTI_actionMsg = MSG_META_QUIT;
+}
+
+@endif
+
+
+
+ /* Edit menu */
+@object GenInteractionClass DEditGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DEditControl,
+              @DDuplicateGroup,
+              @DPasteInsideGroup,
+              @DHideControl,
+              @DCreateGroup;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_EDIT_MENU );
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Provides editing tools */
+@object GenEditControlClass DEditControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GenInteractionClass DDuplicateGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'l', "Duplicate";
+    @localize { "Menu with object duplicating functions." };
+    GI_comp = @DDuplicateControl,
+              @DCustomDuplicateControl;
+    GII_visibility = GIV_POPUP;
+}
+
+@object GrObjDuplicateControlClass DDuplicateControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GrObjCustomDuplicateControlClass DCustomDuplicateControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'C', "Custom Duplicate";
+    @localize { "Allows special duplicating of objects." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+
+@object GenInteractionClass DPasteInsideGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'I', "Paste Inside";
+    @localize { "Paste one object inside another." };
+    GI_comp = @DPasteInsideControl,
+              @DMoveInsideControl;
+    GII_visibility = GIV_POPUP;
+}
+
+@object GrObjPasteInsideControlClass DPasteInsideControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GrObjMoveInsideControlClass DMoveInsideControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'N', "Nudge Inside";
+    @localize { "Move an object that was pasted inside another." };
+    GII_visibility = GIV_DIALOG;
+}
+
+@object GrObjHideShowControlClass DHideControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'H', "Hide";
+    @localize { "Hide objects." };
+    GII_visibility = GIV_POPUP;
+}
+
+@object GenInteractionClass DCreateGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'a', "Create";
+    @localize { "Create some special kinds of objects." };
+    GI_comp = @DCreateControl,
+              @DCustomCreateControl;
+    GII_visibility = GIV_POPUP;
+}
+
+@object GrObjCreateControlClass DCreateControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GrObjCustomShapeControlClass DCustomCreateControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+
+
+  /* Provides view control. */
+@object GenInteractionClass DViewGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DViewControl,
+              @DRedrawTrigger;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_VIEW_MENU );
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Allows zooming and scroller control. */
+@object GenViewControlClass DViewControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GVCI_maxZoom = GVC_MAXIMUM_ZOOM;
+}
+
+  /* For view to redraw contents. */
+@object GenTriggerClass DRedrawTrigger = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'R', "Redraw";
+    GI_kbdAccelerator = @specificUI F5;
+    @localize { "Cause the document to redraw itself." };
+    GTI_destination = DViewControl;
+    GTI_actionMsg = MSG_GVC_REDRAW;
+}
+
+
+
+  /* Options menu */
+@object GenInteractionClass DOptsGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'O', "Options";
+    @localize { "Menu for program features that can be changed." };
+    GI_comp = @DToolBox,
+              @DRulerGroup,
+/*
+              @DRulerGridControl,
+              @DRulerGuideControl,
+*/
+              @DHandlesControl,
+              @DDraftModeControl,
+              @DOptsSubGroup1,
+              @DSaveOptsTrigger;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_OPTIONS_MENU );
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Floating toolbox */
+@object GenInteractionClass DToolBox = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'T', "Floating Toolbox";
+    @localize { "Name of the toolbox that can be moved around." };
+    GII_visibility = GIV_DIALOG;
+    HINT_TOOLBOX;
+    HINT_ALLOW_CHILDREN_TO_WRAP;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_FULL_JUSTIFY_CHILDREN_HORIZONTALLY;
+    HINT_INTERACTION_MAKE_RESIZABLE;
+}
+
+@object GenInteractionClass DRulerGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'R', "Rulers";
+    @localize { "Menu with options for rulers." };
+    GI_comp = @DRulerTypeControl,
+              @DRulerShowControl;
+    GII_visibility = GIV_POPUP;
+}
+
+@object RulerTypeControlClass DRulerTypeControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object DRulerShowControlClass DRulerShowControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+/*
+@object RulerGridControlClass DRulerGridControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'G', "Grids";
+    @localize { "Dialog for setting up grid lines." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+*/
+
+/*
+@object RulerGuideControlClass DRulerGuideControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'u', "Guidelines";
+    @localize { "Dialog for setting up guide lines." };
+    GII_visibility = GIV_DIALOG;
+    GII_type = GIT_PROPERTIES;
+}
+*/
+
+@object GrObjHandleControlClass DHandlesControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'H', "Handles";
+    @localize { "Menu to change the size of object handles." };
+    GII_visibility = GIV_POPUP;
+}
+
+@object GrObjDraftModeControlClass DDraftModeControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GenInteractionClass DOptsSubGroup1 = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DToolBoxControl;
+}
+
+  /* The controller that manages the tool groups. */
+@object GenToolControlClass DToolBoxControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'C', "Customize Toolbars";
+    @localize { "Dialog to change appearance of toolbars." };
+    GII_visibility = GIV_DIALOG;
+    GTCI_toolboxList = @DToolBoxList;
+    GTCI_toolGroupList = @DToolGroupList;
+    HINT_SAME_CATEGORY_AS_PARENT;
+}
+
+  /* List of toolbars and toolboxes.
+   * Could have more, like a toolbar down the side, etc. */
+@chunk ToolboxInfo DToolBoxList[] = {
+    { @DToolBox, @DToolBoxName },
+    { @DToolbar, @DToolBarName }
+};
+
+@chunk char DToolBoxName[] = "Floating Tool Box";
+@chunk char DToolBarName[] = "Toolbar";
+
+  /* List of tool groups. */
+@chunk ToolGroupInfo DToolGroupList[] = {
+    { @DObjectToolGroup } /*,
+    { @DBitmapToolGroup }*/
+};
+
+  /* Save options trigger. */
+@object GenTriggerClass DSaveOptsTrigger = {
+    GI_visMoniker = 'v', "Save Configuration";
+    @localize { "Saves the options to the GEOS.INI file." };
+      /* You can send to the process from any file, since Goc
+       * will put GeodeGetProcessHandle in it's place. */
+    GTI_destination = process;
+    GTI_actionMsg = MSG_META_SAVE_OPTIONS;
+}
+
+
+
+/* Transform menu will be dynamically added between the Edit
+ * and Options menus. */
+
+
+
+  /*
+   * Arrange menu
+   */
+@object GenInteractionClass DArrangeGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'r', "Arrange";
+    @localize { "Menu for moving objects back and forth." };
+    GI_comp = @DDepthControl,
+              @DDepthSub1,
+              @DGroupControl;
+    GII_visibility = GIV_POPUP;
+    HINT_SEEK_MENU_BAR;
+}
+
+@object GrObjDepthControlClass DDepthControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+@object GenInteractionClass DDepthSub1 = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @DNudgeControl,
+              @DAlignControl /*,
+              @DAlignToGridControl*/ ;
+}
+
+@object GrObjNudgeControlClass DNudgeControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'M', "Move";
+    @localize { "Menu to move objects by small increments." };
+    GII_visibility = GIV_POPUP;
+}
+
+@object GrObjAlignDistributeControlClass DAlignControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'D', "Align/Distribute";
+    @localize { "Dialog to line up objects." };
+    GII_visibility = GIV_DIALOG;
+}
+
+/*
+@object GrObjAlignToGridControlClass DAlignToGridControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_visMoniker = 'A', "Align to Grid";
+    @localize { "Dialog to line objects up with grid lines." };
+    GII_visibility = GIV_DIALOG;
+}
+*/
+
+@object GrObjGroupControlClass DGroupControl = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+}
+
+
+
+/* Attributes menu will be dynamically added between the Arrange
+ * and Text menus. */
+
+
+
+  /* Toolbar object, contains some tool groups.
+   * Goes below the main menu and above the display area. */
+@object GenInteractionClass DToolbar = {
+    GI_comp = @DObjectToolGroup /*,
+              @DBitmapToolGroup*/ ;
+    HINT_TOOLBOX;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_ALLOW_CHILDREN_TO_WRAP;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+}
+
+  /* Tool group for object tools. */
+@object GenToolGroupClass DObjectToolGroup = {
+    GTGI_controller = @DObjectToolControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+
+  /* Tool group for bitmap tools. */
+/*
+@object GenToolGroupClass DBitmapToolGroup = {
+    GTGI_controller = @DBitmapToolControl;
+    HINT_MINIMIZE_CHILD_SPACING;
+    HINT_SAME_ORIENTATION_AS_PARENT;
+}
+*/
+
+
+
+  /* Manages the multiple displays. */
+@object GenDisplayGroupClass DDisplayGroup = {
+    HINT_DEFAULT_FOCUS;
+    HINT_DEFAULT_TARGET;
+}
+
+
+
+ /* This is the object tools controller. */
+@object GrObjToolControlClass DObjectToolControl = {
+}
+
+  /* This is the bitmap tools controller.
+   * (This is not a Vis object.) */
+/*
+@object VisBitmapToolControlClass DBitmapToolControl = {
+    GCI_output = ( TO_APP_TARGET );
+}
+*/
+
+@end Interface;
+

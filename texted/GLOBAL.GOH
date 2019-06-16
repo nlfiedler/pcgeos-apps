@@ -1,0 +1,68 @@
+/********************************************************************
+ *
+ * PROJECT:     Text Editor
+ * MODULE:      Global Header
+ * FILE:        global.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *
+ * DESCRIPTION:
+ *      This is a text file editor for GEOS-based devices. It's
+ *      features include: spell checking, cut/copy/paste/undo,
+ *      font control, point size control, printing, and multi-file
+ *      editing.
+ *
+ *      This contains all the global variables, object declaractions,
+ *      and routine declarations.
+ *
+ *******************************************************************/
+
+#ifndef __GLOBAL_GOH
+#define __GLOBAL_GOH
+
+/********************************************************************
+ *              Global Variable Declarations
+ *******************************************************************/
+       /*
+        * curPointSize_g - Current point size of text.
+        * curFontID_g    - Current font ID of text.
+        * fatals_g       - Fold in the extra fatal errors.
+        */
+    extern WWFixed     curPointSize_g;
+    extern FontID      curFontID_g;
+    extern FatalErrors fatals_g;
+
+/********************************************************************
+ *              Global Object Declarations
+ *******************************************************************/
+    @extern object TFEApp;
+    @extern object TFEPrimary;
+    @extern object TFEDocumentControl;
+    @extern object TFEEditControl;
+    @extern object TFESearchReplaceControl;
+    @extern object TFEPtSizeControl;
+    @extern object TFEToolOptions;
+    @extern object TFESaveOptsTrigger;
+    @extern object TFEToolControl;
+    @extern object TFEToolbar;
+    @extern object TFEDisplayControl;
+    @extern object TFEDisplayDisplay;
+    @extern object TFEMoreAboutBox;
+    @extern object TFEText;
+    @extern chunk TFETextRegionArray;
+    @extern chunk acrBadIndexErrMsg;
+    @extern chunk acrBadLeftErrMsg;
+    @extern chunk acrTooManyBadErrMsg;
+    @extern chunk acrFileWriteErrMsg;
+
+/********************************************************************
+ *              Global Function Prototypes
+ *******************************************************************/
+
+#endif
+

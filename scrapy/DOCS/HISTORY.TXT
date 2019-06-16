@@ -1,0 +1,7 @@
+Scrapy History:
+Release 0.4 01/13/96
+
+This is a version history of Scrapy:
+
+01/13/96 - Version 0.4
+  Original beta release

@@ -1,0 +1,136 @@
+/********************************************************************
+ *
+ * PROJECT:     Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:      Application Header File
+ * FILE:        app.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      11/9/95         Initial version
+ *
+ * DESCRIPTION:
+ *      This contains the constants, structures, and classes for
+ *      the HPOGFM program.
+ *
+ * FILES:
+ *      app.goh      - Constants, data types, class definitions.
+ *      global.goh   - Global variable declarations,
+ *                     global object externs,
+ *                     global function prototypes
+ *      appUI.goc    - Static object definitions
+ *      app.goc      - Method definitions for application class.
+ *      process.goc  - Method definitions for process class.
+ *      dir.goc      - Method definitions for directory class.
+ *      view.goc     - Method definitions for view class.
+ *      function.goc - Globally available function definitions.
+ *
+ *******************************************************************/
+
+#ifndef __APP_GOH
+#define __APP_GOH
+
+/********************************************************************
+ *                 Constants
+ *******************************************************************/
+      /* Drive equates. */
+    #define HIGHEST_DRIVE 26
+    #define DRIVE_A       0
+    #define DRIVE_B       1
+
+      /* Our path buffer size. */
+    #define FM_PATH_BUFFER_SIZE ( DRIVE_NAME_MAX_LENGTH + \
+                                  6 * ( FILE_LONGNAME_LENGTH + 1 ) )
+
+      /* GEOS.INI category and keys. */
+    #define INI_CATEGORY "HPOGFM"
+
+      /* Table constants. */
+    #define TABLE_COLS          3
+    #define TABLE_ROWS         10 /* This changes dynamically. */
+    #define TABLE_VISIBLE_ROWS  8
+    #define TABLE_ROW_HEIGHT   16
+
+      /* Widths of table columns (should add up to 238). */
+    #define COL_WIDTH_1  49
+    #define COL_WIDTH_2 148
+    #define COL_WIDTH_3  41
+
+      /* Flags for the table columns. */
+    #define COL_FLAG_DEFS_1 ( TCF_DRAW_RIGHT_SEPARATOR | TRIT_NONE )
+    #define COL_FLAG_DEFS_2 ( TCF_DRAW_RIGHT_SEPARATOR | \
+                              TCF_START_SELECT | TRIT_CELL )
+    #define COL_FLAG_DEFS_3 ( TCF_DRAW_RIGHT_SEPARATOR | TRIT_NONE )
+
+      /* Sorting constants. */
+    #define SORT_BY_DATE 0
+    #define SORT_BY_NAME 1
+    #define SORT_BY_SIZE 2
+
+/********************************************************************
+ *                 Data Types
+ *******************************************************************/
+      /* Holds path to a file or folder. */
+    typedef char FMPathBuffer[FM_PATH_BUFFER_SIZE];
+
+      /* Flags for each item. */
+    typedef byte ItemFlags;
+    #define IF_SELECTED  0x80
+    #define IF_DIRECTORY 0x40
+
+      /* Item type - All interesting info on each item. */
+    typedef struct {
+        FileDateAndTime IT_date;
+        FileLongName    IT_name;
+        dword           IT_size;
+        ItemFlags       IT_flags;
+    } ItemType;
+
+/********************************************************************
+ *                 Class Definitions
+ *******************************************************************/
+      /* Handle the important stuff. */
+    @class FMProcessClass, GenProcessClass;
+          /* Change to common directories. */
+        @message void MSG_FMP_GOTO_WORLD();
+        @message void MSG_FMP_GOTO_DOCUMENT();
+        @message void MSG_FMP_GO_UP_ONE();
+        @message void MSG_FMP_OPEN_DIRECTORY();
+          /* Create new directory. */
+        @message void MSG_FMP_CREATE_FOLDER();
+          /* Perform operations on items. */
+        @message void MSG_FMP_COPY_ITEMS();
+        @message void MSG_FMP_PASTE_ITEMS();
+        @message void MSG_FMP_PASTE_ORIGINAL_ITEMS();
+        @message void MSG_FMP_INVERT_SELECTED_ITEMS();
+        @message void MSG_FMP_SELECT_ALL_ITEMS();
+        @message void MSG_FMP_UNSELECT_ALL_ITEMS();
+        @message void MSG_FMP_DELETE_ITEMS();
+        @message void MSG_FMP_RENAME_ITEMS();
+          /* Drive list methods. */
+        @message void MSG_FMP_REFRESH_DRIVES();
+        @message (GEN_ITEM_GROUP_APPLY_MSG)
+                      MSG_FMP_DRIVE_LIST_APPLY;
+        @message (GEN_DYNAMIC_LIST_QUERY_MSG)
+                      MSG_FMP_DRIVE_LIST_MONIKER_QUERY;
+          /* Disk operations. */
+        @message void MSG_FMP_RENAME_DISK();
+    @endc;
+
+    @class FMApplicationClass, GenApplicationClass;
+          /* Message to stop running process. */
+        @message void MSG_FM_APP_STOP_PROCESS();
+    @endc;
+
+      /* Add custom scrolling behavior for table. */
+    @class FMViewClass, GenViewClass;
+    @endc;
+
+      /* Object that manages the files and folders. */
+    @class FMDirectoryClass, JTableClass;
+    @endc;
+
+#endif
+

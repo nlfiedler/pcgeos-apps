@@ -1,0 +1,55 @@
+/********************************************************************
+ *
+ * PROJECT:     Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:      Application Object Methods
+ * FILE:        app.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *
+ * DESCRIPTION:
+ *      These are the function definitions and method definitions
+ *      for the application object.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Internal/Jedi/jtable.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              Code for FMApplicationClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_FM_APP_STOP_PROCESS
+ ********************************************************************
+ * SYNOPSIS:     Tells the process thread to stop its operation.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Set the cancel process flag to TRUE. Then the
+ *               process will eventually see the flag and stop
+ *               by itself.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+@extern method FMApplicationClass, MSG_FM_APP_STOP_PROCESS {
+
+  bCancelProcess_g = TRUE;
+} /* MSG_FM_APP_STOP_PROCESS */
+

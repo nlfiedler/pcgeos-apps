@@ -1,0 +1,220 @@
+/********************************************************************
+ *
+ * PROJECT:     Alarm Clock
+ * MODULE:      Static Objects Module
+ * FILE:        appUI.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *      NF      8/4/96          Fixed up variable names and indentation.
+ *
+ * DESCRIPTION:
+ *      Set an alarm to go off at a particular time. Has a large
+ *      display of the current time and uses the space bar as a
+ *      snooze button for the alarm. Also features a repeating
+ *      alarm that goes off everyday, using the space bar to
+ *      stop the alarm sound each time it goes off.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/gadgets.goh>
+    @include <rtcm.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl ACProcessClass, neverSaved;
+    @classdecl ACApplicationClass;
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+    @extern method ACProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION;
+    @extern method ACProcessClass, MSG_AC_PROCESS_ALARM_SET_OR_RESET;
+    @extern method ACProcessClass, MSG_AC_PROCESS_ALARM_SOUND_OFF;
+    @extern method ACProcessClass, MSG_AC_PROCESS_ALARM_TIME_CHANGED;
+    @extern method ACProcessClass, MSG_GEN_PROCESS_CLOSE_APPLICATION;
+
+    @extern method ACApplicationClass,
+                       MSG_AC_APPLICATION_DISPLAY_CURRENT_TIME;
+    @extern method ACApplicationClass, MSG_META_KBD_CHAR;
+
+/********************************************************************
+ *              Global Variable Declarations
+ *******************************************************************/
+      /*
+       * ACCurTimeHandle_g,  - Used to set the current time
+       * ACCurTimeTimerID_g    update timer.
+       * ACRTCMeventToken_g, - Used in setting the RTCM event
+       * ACRTCMeventID_g       for the alarm.
+       * ACSaveCharacters_g  - Flag indicating to save characters
+       *                       received by app.
+       * ACLastCharacter_g   - Last character pressed while alarm
+       *                       was going off.
+       */
+    TimerHandle  ACCurTimeHandle_g;
+    word         ACCurTimeTimerID_g;
+    unsigned int ACRTCMeventToken_g;
+    unsigned int ACRTCMeventID_g;
+    Boolean      ACSaveCharacters_g;
+    char         ACLastCharacter_g;
+
+/********************************************************************
+ *              Static Object Resources
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start Application;
+
+@object ACApplicationClass ACApp = {
+    GI_visMoniker = list { @ACTextMoniker };
+    GI_comp = @ACPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+             @ACPrimary;
+    HINT_APP_IS_PRODUCTIVITY_ORIENTED;
+}
+
+@visMoniker ACTextMoniker = "Alarm Clock";
+@localize { "Name of application displayed in main window title bar." };
+
+@end Application;
+
+/********************************************************************
+ *              Interface Resource
+ *******************************************************************/
+@start Interface;
+
+  /* Primary window */
+@object GenPrimaryClass ACPrimary = {
+    GI_comp = @ACAboutBox,
+              @ACTimeGroup,
+              @ACAlarmGroup,
+              @ACMessageText;
+    HINT_ORIENT_CHILDREN_VERTICALLY;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+  /* Credits */
+@object GenInteractionClass ACAboutBox = {
+    GI_visMoniker = "About";
+    @localize { "Dialog that displays author information." };
+    GI_comp = @ACAboutText1,
+              @ACAboutText2,
+              @ACAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+    HINT_SEEK_MENU_BAR;
+    HINT_SEEK_SLOT = 0;
+}
+
+@object GenGlyphClass ACAboutText1 = {
+    GI_visMoniker = "OmniGo Alarm Clock";
+    @localize { "Title of application displayed in About box." };
+}
+
+@object GenGlyphClass ACAboutText2 = {
+    GI_visMoniker = "Blue Marsh Softworks, 1996";
+    @localize { "Displayed in About box, do not change." };
+}
+
+@object GenTriggerClass ACAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+  /* Current time group */
+@object GenInteractionClass ACTimeGroup = {
+    GI_comp = @ACTimeText;
+    GI_visMoniker = "Current Time:";
+    @localize { "Title of group that displays the current time." };
+    HINT_DRAW_IN_BOX;
+    HINT_PLACE_MONIKER_ABOVE;
+    HINT_CENTER_MONIKER;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+@object GenTextClass ACTimeText = {
+    GI_attrs = @default | GA_READ_ONLY;
+    ATTR_GEN_TEXT_DEFAULT_PARA_ATTR =
+        ( J_CENTER << VTDPA_JUSTIFICATION_OFFSET );
+}
+
+  /* Alarm setting group */
+@object GenInteractionClass ACAlarmGroup = {
+    GI_comp = @ACAlarmTimeInput,
+              @ACAlarmSetItemGroup,
+              @ACAlarmOnOffBooleanGroup;
+    GI_visMoniker = "Alarm Time:";
+    @localize { "Title of group that displays the alarm time." };
+    HINT_DRAW_IN_BOX;
+    HINT_PLACE_MONIKER_ABOVE;
+    HINT_CENTER_MONIKER;
+    HINT_ORIENT_CHILDREN_VERTICALLY;
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+@object TimeInputClass ACAlarmTimeInput = {
+    GCI_output = process;
+    TII_actionMsg = MSG_AC_PROCESS_ALARM_TIME_CHANGED;
+    TII_incrementValue = 30;
+}
+
+  /* Alarm type group */
+@object GenItemGroupClass ACAlarmSetItemGroup = {
+    GI_comp = @ACAlarm1ShotItem,
+              @ACAlarmRepeatItem;
+    GIGI_behaviorType = GIGBT_EXCLUSIVE;
+    GIGI_selection = AT_ONE_SHOT;
+}
+
+@object GenItemClass ACAlarm1ShotItem = {
+    GI_visMoniker = "One-shot";
+    @localize { "Button that makes alarm go off just once." };
+    GII_identifier = AT_ONE_SHOT;
+}
+
+@object GenItemClass ACAlarmRepeatItem = {
+    GI_visMoniker = "Repeating";
+    @localize { "Button that makes alarm go off repeatedly." };
+    GII_identifier = AT_REPEATING;
+}
+
+  /* Alarm on/off boolean */
+@object GenBooleanGroupClass ACAlarmOnOffBooleanGroup = {
+    GI_comp = @ACAlarmOnOffBoolean;
+    GBGI_destination = process;
+    GBGI_applyMsg = MSG_AC_PROCESS_ALARM_SET_OR_RESET;
+}
+
+@object GenBooleanClass ACAlarmOnOffBoolean = {
+    GI_visMoniker = "Alarm On";
+    @localize { "Button that turns on the alarm." };
+    GBI_identifier = AOO_ON;
+}
+
+  /* Message text */
+@object GenTextClass ACMessageText = {
+    GI_visMoniker = "Message:";
+    @localize { "Title of group that displays reminder message." };
+    GTXI_text = "Type your reminder message here.";
+    HINT_DRAW_IN_BOX;
+    HINT_PLACE_MONIKER_ABOVE;
+    HINT_CENTER_MONIKER;
+}
+
+@end Interface;
+

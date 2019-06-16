@@ -1,0 +1,71 @@
+/********************************************************************
+ *
+ *      Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      RulerShowControl Methods
+ * FILE:        ruler.goc
+ *
+ * AUTHORS:     Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/4/95          Initial version
+ *      NF      2/26/96         Made compilable for OmniGo.
+ *
+ * DESCRIPTION:
+ *      This is the code for the ruler show control.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <grobj.goh>
+    @include <ruler.goh>
+    #include <print.h>
+    @include "app.goh"
+
+/********************************************************************
+ *              Local Functions
+ *******************************************************************/
+
+/********************************************************************
+ *              Code for DRulerShowControlClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_RSCC_CHANGE_STATE
+ ********************************************************************
+ * SYNOPSIS:     Show or hide the rulers.
+ * PARAMETERS:   RulerShowControlAttrs flags
+ * RETURNS:      void
+ * CALLED BY:    DRulerShowControl
+ * STRATEGY:     Relay message to document and let it turn off
+ *               the views.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      8/4/95          Initial version
+ *******************************************************************/
+@extern method DRulerShowControlClass, MSG_RSCC_CHANGE_STATE {
+      /*
+       * event - Classed message to turn on/off rulers.
+       */
+    EventHandle event;
+
+      /*
+       * Send a classed message to the document.
+       */
+    event = @record DDocumentClass::MSG_D_DOCUMENT_SHOW_RULERS( flags );
+EC( ECCheckEventHandle( event ); )
+    @send application::MSG_META_SEND_CLASSED_EVENT( event, TO_APP_MODEL );
+
+      /*
+       * Call superclass to get default behavior.
+       */
+    @callsuper();
+} /* MSG_RSCC_CHANGE_STATE */
+

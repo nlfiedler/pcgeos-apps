@@ -1,0 +1,276 @@
+/********************************************************************
+ *
+ *      Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      Document Objects
+ * FILE:        docUI.goc
+ *
+ * AUTHORS:     Allen Schoonmaker
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      AS      3/6/92          Initial version
+ *      NF      7/1/95          Converted to Zoomer application and
+ *                              added more functionality.
+ *      NF      2/26/96         Made compilable for OmniGo.
+ *
+ * DESCRIPTION:
+ *      This is the file for the document related objects. The
+ *      DocGroup, Document, and Display resources are here.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *             Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+/*
+    @include <objects/bitmapc.goh>
+*/
+    @include <grobj.goh>
+    @include <ruler.goh>
+    #include <print.h>
+    @include "app.goh"
+
+/********************************************************************
+ *             Class Declarations
+ *******************************************************************/
+    @classdecl DDocumentClass;
+
+/********************************************************************
+ *             Method Declarations
+ *******************************************************************/
+    @extern method DDocumentClass,
+                       MSG_GEN_DOCUMENT_INITIALIZE_DOCUMENT_FILE;
+    @extern method DDocumentClass,
+                       MSG_GEN_DOCUMENT_ATTACH_UI_TO_DOCUMENT;
+    @extern method DDocumentClass,
+                       MSG_GEN_DOCUMENT_WRITE_CACHED_DATA_TO_FILE;
+    @extern method DDocumentClass,
+                       MSG_GEN_DOCUMENT_DETACH_UI_FROM_DOCUMENT;
+    @extern method DDocumentClass, MSG_PRINT_START_PRINTING;
+    @extern method DDocumentClass, MSG_PRINT_REPORT_PAGE_SIZE;
+    @extern method DDocumentClass, MSG_D_DOC_SET_BOUNDS;
+    @extern method DDocumentClass, MSG_VIS_DRAW;
+    @extern method DDocumentClass, MSG_VIS_RECALC_SIZE;
+    @extern method DDocumentClass, MSG_META_CONTENT_VIEW_WIN_OPENED;
+    @extern method DDocumentClass, MSG_D_DOCUMENT_SHOW_RULERS;
+
+/********************************************************************
+ *             External Objects
+ *  These are objects outside this file that are connected to
+ *  objects in this file. We don't want to include global.goh
+ *  because then we'll have duplicate object declarations.
+ *******************************************************************/
+    @extern object @DDocumentControl;
+    @extern object @DDisplayGroup;
+
+/********************************************************************
+ *                 DocGroup Resource
+ *******************************************************************/
+@start DocGroup;
+
+@object GenDocumentGroupClass DDocumentGroup = {
+    GDGI_untitledName = "Draw Untitled";
+    @localize { "Name of a new document." };
+    GDGI_documentClass   = (ClassStruct*)&DDocumentClass;
+    GDGI_protocolMajor   = DOCUMENT_PROTOCOL_MAJOR;
+    GDGI_protocolMinor   = DOCUMENT_PROTOCOL_MINOR;
+    GDGI_documentControl = @DDocumentControl;
+    GDGI_genDisplayGroup = @DDisplayGroup;
+    GDGI_genDisplay      = @DDisplay;
+    GDGI_genView         = @DView;
+      /* Let the docGroup know that our grobj documents
+       * are large document model. */
+    GDGI_attrs = @default | GDGA_VM_FILE_CONTAINS_OBJECTS
+                          | GDGA_LARGE_CONTENT;
+}
+
+  /*
+   * Each application that uses the GrObj needs at least (and
+   * usually only) one GrObjHead object. The GrObjHead is
+   * responsible for maintaining the current tool, allowing
+   * the user's selected tool to remain constant as one
+   * switches among the GrObjBody objects in the multiple
+   * documents the application has open. The only caveat is
+   * that the GrObjHead must be run by the same thread as
+   * the GrObjBody objects, which is why we instantiate
+   * it in this DocGroup resource, rather than the
+   * Interface resource.
+   */
+@object GrObjHeadClass DGrObjHead = {
+    GH_currentTool = (ClassStruct*)&PointerClass;
+}
+
+@end DocGroup;
+
+/********************************************************************
+ *             Display Resource
+ * This resource is duplicated automatically by GenDocumentGroup.
+ *******************************************************************/
+@start Display, notDetachable;
+
+  /* Contains the GenView. */
+@object GenDisplayClass DDisplay = {
+    GI_states = @default & ~GS_USABLE;
+    GI_comp = @DTopInteraction,
+              @DBottomInteraction;
+    ATTR_GEN_DISPLAY_NOT_MINIMIZABLE;
+    HINT_DEFAULT_FOCUS;
+    HINT_DEFAULT_TARGET;
+    HINT_ORIENT_CHILDREN_VERTICALLY;
+}
+
+@object GenInteractionClass DTopInteraction = {
+    GI_comp = @DCornerView,
+              @DHorizView;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+}
+
+@object GenInteractionClass DBottomInteraction = {
+    GI_comp = @DVertView,
+              @DView;
+    HINT_ORIENT_CHILDREN_HORIZONTALLY;
+    HINT_EXPAND_HEIGHT_TO_FIT_PARENT;
+    HINT_EXPAND_WIDTH_TO_FIT_PARENT;
+}
+
+@object GenViewClass DCornerView = {
+    GI_attrs = @default & ~GA_TARGETABLE;
+    GVI_docBounds = { 0, 0, VIS_RULER_HEIGHT, VIS_RULER_HEIGHT };
+    GVI_attrs = @default | GVA_SAME_COLOR_AS_PARENT_WIN
+                         | GVA_NO_WIN_FRAME;
+    GVI_horizAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    HINT_MINIMUM_SIZE = { SST_PIXELS | VIS_RULER_HEIGHT,
+                          SST_PIXELS | VIS_RULER_HEIGHT, 0 };
+}
+
+@object RulerViewClass DHorizView = {
+    GVI_docBounds = { 0, 0, DOCUMENT_WIDTH, VIS_RULER_HEIGHT };
+    GVI_content = DHorizContent;
+    GVI_horizAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    HINT_MINIMUM_SIZE = { 0, SST_PIXELS | VIS_RULER_HEIGHT, 0 };
+}
+
+@object RulerViewClass DVertView = {
+    GVI_docBounds = { 0, 0, VIS_RULER_HEIGHT, DOCUMENT_HEIGHT };
+    GVI_content = DVertContent;
+    GVI_horizAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs = @default | GVDA_NO_LARGER_THAN_CONTENT;
+    RVI_attrs = @default & ~RVA_HORIZONTAL;
+    HINT_MINIMUM_SIZE = { SST_PIXELS | VIS_RULER_HEIGHT, 0, 0 };
+}
+
+  /* Displays the graphic objects. */
+@object GenViewClass DView = {
+    GVI_attrs = @default | GVA_CONTROLLED
+                         | GVA_DRAG_SCROLLING
+                         | GVA_WINDOW_COORDINATE_MOUSE_EVENTS;
+    GVI_docBounds = { 0, 0, DOCUMENT_WIDTH, DOCUMENT_HEIGHT };
+    GVI_horizAttrs = @default | GVDA_SCROLLABLE
+                              | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_vertAttrs  = @default | GVDA_SCROLLABLE
+                              | GVDA_NO_LARGER_THAN_CONTENT;
+    GVI_horizLink = DVertView;
+    GVI_vertLink = DHorizView;
+    HINT_DEFAULT_FOCUS;
+    HINT_DEFAULT_TARGET;
+}
+
+@object RulerContentClass DHorizContent = {
+    VI_bounds = { 0, 0, DOCUMENT_WIDTH, VIS_RULER_HEIGHT };
+    VCI_comp = @DHorizRuler;
+    VCNI_attrs = @default | VCNA_SAME_HEIGHT_AS_VIEW
+                          | VCNA_LARGE_DOCUMENT_MODEL
+                          | VCNA_WINDOW_COORDINATE_MOUSE_EVENTS;
+    VCNI_view = DHorizView;
+}
+
+@object RulerContentClass DVertContent = {
+    VI_bounds = { 0, 0, VIS_RULER_HEIGHT, DOCUMENT_HEIGHT };
+    VCI_comp = @DVertRuler;
+    VCNI_attrs = @default | VCNA_SAME_HEIGHT_AS_VIEW
+                          | VCNA_LARGE_DOCUMENT_MODEL
+                          | VCNA_WINDOW_COORDINATE_MOUSE_EVENTS;
+    VCNI_view = DVertView;
+}
+
+@object VisRulerClass DHorizRuler = {
+    VI_bounds = { 0, 0, DOCUMENT_WIDTH, VIS_RULER_HEIGHT };
+    VRI_rulerAttrs = ( VRA_SHOW_GUIDES
+                     | VRA_SHOW_GRID
+                     | VRA_SHOW_MOUSE
+                     | VRA_HORIZONTAL ) & ~VRA_MASTER;
+}
+
+@object VisRulerClass DVertRuler = {
+    VI_bounds = { 0, 0, VIS_RULER_HEIGHT, DOCUMENT_HEIGHT };
+    VRI_rulerAttrs = ( VRA_SHOW_GUIDES
+                     | VRA_SHOW_GRID
+                     | VRA_SHOW_MOUSE ) & ~VRA_HORIZONTAL;
+    VRI_slave = DHorizRuler;
+}
+
+@end Display;
+
+/********************************************************************
+ *             Document Resource
+ * This is duplicated and placed in the document.
+ *******************************************************************/
+@start Document, notDetachable;
+
+  /*
+   * Declare the template GrObjBody. A GrObjBody is the object
+   * that manages a related set of graphic objects. A GrObjBody's
+   * purpose in life is to orchestrate the behavior of its child
+   * objects. While a child object can be created that is
+   * outside the bounds set for the GrObjBody (in GBI_bounds),
+   * such a child will never draw unless part of it falls
+   * within the bounds of the body.
+   * A document can have more than one GrObjBody, but for this
+   * example we will have only one.
+   */
+@object GrObjBodyClass DGrObjBody = {
+    GBI_bounds = { 0, 0, DOCUMENT_WIDTH, DOCUMENT_HEIGHT };
+    GBI_flags = ( GBF_DEFAULT_TARGET | GBF_DEFAULT_FOCUS );
+      /*
+       * Set the GrObjAttributeManager that holds the
+       * attributes for our children.
+       */
+    GBI_goam = @DGOAM;
+}
+
+  /*
+   * Declare the template attribute manager for the document. The
+   * attribute manager, as the name implies, keeps track of sets
+   * of attributes for all the graphic objects within a document,
+   * condensing identical sets of attributes into a single shared
+   * set of attributes, etc. It isn't tied to any particular
+   * GrObjBody (it's a stand-alone object, not a child of a
+   * GrObjBody), but keeps a list of the GrObjBody objects in the
+   * document(s), so it can communicate style-sheet changes
+   * to all the affected bodies.
+   */
+@object GrObjAttributeManagerClass DGOAM = {
+    GOAMI_bodyList = @GOAMBodyList;
+}
+
+  /*
+   * Declare the chunk array that holds the optrs of the
+   * GrObjBody objects the attribute manager should track.
+   * NOTE: Any GrObjBody in a template resource that isn't this
+   * template resource may not be placed in this array. Doing so
+   * will cause the resource containing that body to come into
+   * memory, which is illegal (template resources are never
+   * allowed to come into memory).
+   */
+@chunkArray optr GOAMBodyList = { @DGrObjBody };
+
+@end Document;
+

@@ -1,0 +1,69 @@
+/********************************************************************
+ *
+ * PROJECT:     Expert Mode
+ * MODULE:      Global Header File
+ * FILE:        global.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *
+ * DESCRIPTION:
+ *      This contains all the global variables, object declaractions,
+ *      and routine declarations.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              Object Declarations
+ *******************************************************************/
+    @extern object @EMExpressOptionsGroup;
+    @extern object @EMUIEODefaultItem;
+    @extern object @EMUIEOTaskListItem;
+    @extern object @EMUIEODeskAccListItem;
+    @extern object @EMUIEOMainAppsListItem;
+    @extern object @EMUIEOOtherAppsListItem;
+    @extern object @EMUIEOPrintPanelItem;
+    @extern object @EMUIEODosTaskListItem;
+    @extern object @EMUIEOUtilPanelItem;
+    @extern object @EMUIEOExitToDosItem;
+    @extern object @EMEMControlOptionsGroup;
+    @extern object @EMUIEMOtherMenuItem;
+    @extern object @EMUIEMRunningMenuItem;
+    @extern object @EMUIEMRunMenuItem;
+    @extern object @EMInterfaceLevelGroup;
+    @extern object @EMInterfaceOptionsGroup;
+    @extern object @EMLaunchLevelGroup;
+    @extern object @EMLaunchModelGroup;
+    @extern object @EMLaunchOptionsGroup;
+    @extern object @EMDocLevelGroup;
+    @extern object @EMDocOptionsGroup;
+    @extern object @EMWindowOptionsGroup;
+    @extern object @EMHelpOptionsGroup;
+    @extern object @EMExtraOptionsGroup;
+    @extern chunk @acrSaveErrMsg;
+
+/********************************************************************
+ *              Function Prototypes
+ *******************************************************************/
+    void EMEMCOptionsRead( void );
+
+    void EMEMCOptionsWrite( void );
+
+    void EMExtraOptionsRead( void );
+
+    void EMExtraOptionsWrite( void );
+
+    void EMExpressMenu( Boolean exists_p );
+
+    void EMExpressMenuControls( Boolean exists_p );
+
+    void ErrorMessage( optr odMessage_p );
+

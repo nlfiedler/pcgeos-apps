@@ -1,0 +1,613 @@
+/********************************************************************
+ *
+ * Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Text Editor
+ * MODULE:      Text Methods
+ * FILE:        text.goc
+ *
+ * AUTHORS:     Lawrence Hosken
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      LH      9/21/92         Initial version of SimpWP
+ *      EB      12/16/93        Fixed up scrolling, default focus, and
+ *                              targeting Text object for EditControl.
+ *      NF      4/1/95          Turned into Text Editor
+ *
+ * DESCRIPTION:
+ *      This is a text file editor for GEOS-based devices. It's
+ *      features include: spell checking, cut/copy/paste/undo,
+ *      font control, point size control, printing, and multi-file
+ *      editing.
+ *
+ *      These are the function definitions and method definitions
+ *      for the text object.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Objects/vlTextC.goh>
+    #include "hwr.h"                /* PLATFORM: omnigo only */
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              TextDoHWR
+ ********************************************************************
+ * SYNOPSIS:     Performs HWR on the passed ink block.
+ * RETURNS:      Handle of recognized character block.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Contact and reset the HWR library. Have it try
+ *               to recognize the ink data. Return the handle of
+ *               the block of recognized characters. Might return
+ *               NullHandle if unable to recognize ink.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      3/1/96          Initial version
+ *******************************************************************/
+@ifdef OMNIGO
+
+MemHandle
+TextDoHWR( MemHandle hmemInk_p,
+           optr      odText_p )
+  /*
+   * hmemInk_p - Block containing ink data.
+   * odText_p  - Text object that wants the ink recognized.
+   */
+{
+
+      /*
+       * hgeoHWRLib     - HWR library.
+       * error          - HWR library error flag.
+       * pmemInkInfo    - Ink data locked down.
+       * hmemRecognized - Will hold string of recognized characters.
+       * pachRecognized - The string of recognized characters.
+       * gestureInfo    - high-word = char or blockhandle of string,
+       *                  low-word  = gestureType
+       * vtrSelection   - Current text selection, used to delete text.
+       */
+    GeodeHandle  hgeoHWRLib;
+    word         error;
+    InkHeader *  pmemInkInfo;
+    MemHandle    hmemRecognized;
+    char *       pachRecognized;
+    dword        gestureInfo;
+    VisTextRange vtrSelection;
+
+EC( ECCheckMemHandle( hmemInk_p ); )
+EC( ECCheckLMemOD( odText_p ); )
+
+      /*
+       * If no HWR library exists, then there's nothing to do.
+       */
+    hmemRecognized = NullHandle;
+    hgeoHWRLib = UserGetHWRLibraryHandle();
+    if ( NullHandle != hgeoHWRLib ) {
+EC(     ECCheckGeodeHandle( hgeoHWRLib ); )
+        error = CallHWRLibrary_NoArgs( hgeoHWRLib,
+                                       HWRR_BEGIN_INTERACTION );
+          /*
+           * Begin interaction returns 0 if everything okay.
+           */
+        if ( 0 == error ) {
+            CallHWRLibrary_NoArgs( hgeoHWRLib, HWRR_RESET );
+            @call odText_p::MSG_VIS_TEXT_SET_HWR_FILTER();
+            pmemInkInfo = MemLock( hmemInk_p );
+EC(         ECCheckBounds( pmemInkInfo ); )
+            CallHWRLibrary_TwoArgs( hgeoHWRLib,
+                                    HWRR_ADD_POINTS,
+                                    pmemInkInfo->IH_count,
+                                    &(pmemInkInfo->IH_data) );
+            MemUnlock( hmemInk_p );
+              /*
+               * First try to do multi-character recognition.
+               * If multi-char recognition didn't work, then see if
+               * ink is a gesture (like the graffiti HRW engine).
+               */
+            hmemRecognized = CallHWRLibrary_NoArgs(
+                hgeoHWRLib,
+                HWRR_DO_MULTIPLE_CHAR_RECOGNITION );
+            if ( NullHandle == hmemRecognized ) {
+                gestureInfo = CallHWRLibrary_NoArgs(
+                    hgeoHWRLib,
+                    HWRR_DO_GESTURE_RECOGNITION );
+                switch ( gestureInfo & 0xFFFF ) {
+                      /* If this is undefined then you're not
+                       * in the OMNIGO directory.*/
+                    case GT_STRING_MACRO :
+                          /*
+                           * Gesture is a macro of some kind.
+                           */
+                        hmemRecognized = ( gestureInfo >> 16 );
+                        break;
+                    case GT_CHAR :
+                          /*
+                           * Gesture is a single character.
+                           * Allocate more than 1 byte since it
+                           * will be treated as a string.
+                           */
+                        hmemRecognized = MemAlloc(
+                            2,
+                            HF_SWAPABLE,
+                            ( HAF_ZERO_INIT | HAF_LOCK ) );
+                        if( NullHandle != hmemRecognized ) {
+EC(                         ECCheckMemHandle( hmemRecognized ); )
+                            pachRecognized = MemDeref( hmemRecognized );
+EC(                         ECCheckBounds( pachRecognized ); )
+                            pachRecognized[0] = ( gestureInfo >> 16 );
+                            MemUnlock( hmemRecognized );
+                        }
+                        break;
+                    case GT_CUT :
+                          /*
+                           * User wants to cut selection to clipboard.
+                           */
+                        @send odText_p::MSG_META_CLIPBOARD_CUT();
+                        hmemRecognized = NullHandle;
+                        break;
+                    case GT_COPY :
+                          /*
+                           * User wants to copy selection to clipboard.
+                           */
+                        @send odText_p::MSG_META_CLIPBOARD_COPY();
+                        hmemRecognized = NullHandle;
+                        break;
+                    case GT_PASTE :
+                          /*
+                           * User wants to replace selection with
+                           * text on the clipboard.
+                           */
+                        @send odText_p::MSG_META_CLIPBOARD_PASTE();
+                        hmemRecognized = NullHandle;
+                        break;
+                    case GT_BACKSPACE :
+                          /*
+                           * User wants to delete current selection.
+                           * If there is no selection, delete character
+                           * in front of text cursor.
+                           */
+                        @call odText_p::MSG_VIS_TEXT_GET_SELECTION_RANGE(
+                            &vtrSelection );
+                        if ( vtrSelection.VTR_start ==
+                             vtrSelection.VTR_end ) {
+                              /*
+                               * Delete character in front of cursor.
+                               */
+                            @send odText_p::MSG_META_SUSPEND();
+                            @send odText_p::MSG_VIS_TEXT_SELECT_RANGE(
+                                vtrSelection.VTR_end,
+                                vtrSelection.VTR_start - 1 );
+                            @send odText_p::MSG_VIS_TEXT_DELETE_SELECTION();
+                            @send odText_p::MSG_META_UNSUSPEND();
+                        }
+                        else {
+                            @send odText_p::MSG_VIS_TEXT_DELETE_SELECTION();
+                        }
+                        hmemRecognized = NullHandle;
+                        break;
+                    case GT_DELETE_SELECTION :
+                          /*
+                           * User wants to delete current selection.
+                           */
+                        @send odText_p::MSG_VIS_TEXT_DELETE_SELECTION();
+                        hmemRecognized = NullHandle;
+                        break;
+                    default :
+                          /*
+                           * The gesture is something special.
+                           * This example doesn't handle those cases,
+                           * so we mark the block as a null handle.
+                           */
+                        hmemRecognized = NullHandle;
+                        break;
+                } /* switch */
+            }
+            CallHWRLibrary_NoArgs( hgeoHWRLib, HWRR_END_INTERACTION );
+        }
+    }
+    return( hmemRecognized );
+} /* TextDoHWR */
+
+@endif
+
+/********************************************************************
+ *              Most of the Code for TFETextClass
+ * Some code is in the DOCUMENT.GOC file.
+ ********************************************************************
+
+/********************************************************************
+ *              MSG_META_TEXT_USER_MODIFIED
+ ********************************************************************
+ * SYNOPSIS:     We've been edited by the user. Lets mark the
+ *               document dirty so it will be saved.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Send message to document telling it that it is
+ *               now dirty and should eventually be saved.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFETextClass, MSG_META_TEXT_USER_MODIFIED {
+
+    @callsuper();
+
+       /*
+        * Check if we can set document dirty. Set document dirty
+        * if we are allowed to.
+        */
+    pself = ObjDerefVis( oself );
+EC( ECCheckBounds( pself ); )
+    if ( pself->TFETI_allowChanges ) {
+        @send @visParent::MSG_GEN_DOCUMENT_MARK_DIRTY();
+    }
+} /* MSG_META_TEXT_USER_MODIFIED */
+
+/********************************************************************
+ *              MSG_PRINT_START_PRINTING
+ ********************************************************************
+ * SYNOPSIS:     Print the text object.
+ * CALLED BY:    PrintControl
+ * PARAMETERS:   optr         printCtrlOD
+ *               GStateHandle gstate
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get printer margins, then send MSG_VIS_DRAW to
+ *               text object with the DF_PRINT flag, then signal
+ *               printing completed.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFETextClass, MSG_PRINT_START_PRINTING {
+      /*
+       * iCurPage     - Current page being printed.
+       * cNumPages    - Number of pages.
+       * sPageSize    - Size of page from PrintControl.
+       * pageWidth    - Width of paper.
+       * pageHeight   - Height of print area in points.
+       * bContinue    - Indicates when to stop printing.
+       * textSize     - Image size of text.
+       * bTextChanged - TRUE if text modified.
+       * newPtSize    - Used to set point size.
+       * savedSize    - Current point size, saved.
+       * savedFont    - Current font, saved.
+       * regPos       - Returned by MSG_VIS_LARGE_TEXT_GET_REGION_POS.
+       */
+    dword                                iCurPage;
+    int                                  cNumPages;
+    PageSizeReport                       sPageSize;
+    word                                 pageWidth;
+    dword                                pageHeight;
+    Boolean                              bContinue;
+    XYValueAsDWord                       textSize;
+    Boolean                              bTextChanged;
+    WWFixed                              newPtSize;
+    WWFixed                              savedSize;
+    FontID                               savedFont;
+    VisLargeTextGetRegionPosReturnStruct regPos;
+
+EC( ECCheckLMemOD( printCtrlOD ); )
+
+      /*
+       * Get the paper size as set by the user and find the
+       * page width and height without margins. Then set the
+       * document size to reflect current paper size.
+       */
+    @call printCtrlOD::MSG_PRINT_CONTROL_GET_PAPER_SIZE_INFO(
+        &sPageSize );
+    pageWidth  = sPageSize.PSR_width -
+                 sPageSize.PSR_margins.PCMP_left -
+                 sPageSize.PSR_margins.PCMP_right;
+    pageHeight = sPageSize.PSR_height -
+                 sPageSize.PSR_margins.PCMP_top -
+                 sPageSize.PSR_margins.PCMP_bottom;
+    @call printCtrlOD::MSG_PRINT_CONTROL_SET_DOC_SIZE(
+        sPageSize.PSR_width, sPageSize.PSR_height );
+
+      /*
+       * Have Undo ignore next changes to text object.
+       * False to have it not flush the undo queue.
+       * Set flag so text changes won't mark document dirty.
+       * Save text modified state.
+       * Save text image size (width).
+       */
+    @call process::MSG_GEN_PROCESS_UNDO_IGNORE_ACTIONS( FALSE );
+    pself = ObjDerefVis( oself );
+EC( ECCheckBounds( pself ); )
+    pself->TFETI_allowChanges = FALSE;
+    bTextChanged = @call self::MSG_VIS_TEXT_GET_USER_MODIFIED_STATE();
+    textSize = @call self::MSG_VIS_LARGE_TEXT_GET_DRAFT_REGION_SIZE( 0 );
+
+      /*
+       * Freeze text. Set text width to printer page width.
+       * Save the font and point size of the text.
+       * Unfreeze the text.
+       */
+    @send self::MSG_META_SUSPEND();
+    savedFont = curFontID_g;
+    @send self::MSG_VIS_TEXT_SET_FONT_ID( TFE_PRINT_FONT,
+                                          TEXT_ADDRESS_PAST_END, 1 );
+    newPtSize.WWF_int  = TFE_PRINT_PS;
+    newPtSize.WWF_frac = 0;
+    savedSize = curPointSize_g;
+    @send self::MSG_VIS_TEXT_SET_POINT_SIZE( newPtSize,
+                                             TEXT_ADDRESS_PAST_END, 1 );
+    @send self::MSG_VIS_LARGE_TEXT_SET_DRAFT_REGION_SIZE(
+        pageWidth, pageHeight );
+    @call self::MSG_META_UNSUSPEND();
+
+      /*
+       * Set number of pages to print.
+       */
+    cNumPages = @call self::MSG_VIS_LARGE_TEXT_GET_REGION_COUNT();
+EC_ERROR_IF( 0 == cNumPages, TFE_ERR_NUM_PAGES_IS_ZERO );
+    @call printCtrlOD::MSG_PRINT_CONTROL_SET_TOTAL_PAGE_RANGE(
+        1, cNumPages );
+
+      /*
+       * This loop is from Concepts Code Display 23-1 on p809.
+       * It is the main printing loop. It translates the text up
+       * one page at a time while printing it.
+       */
+    for( iCurPage = 0; iCurPage < cNumPages; iCurPage++ ) {
+        bContinue = @call printCtrlOD::
+            MSG_PRINT_CONTROL_REPORT_PROGRESS( PCPT_PAGE, iCurPage+1 );
+        if ( FALSE == bContinue ) {
+            break;
+        }
+          /*
+           * Shift text up number of pages and draw text. This is done
+           * by using the regions of the VisLargeText, which are each
+           * a page of the text.
+           * Form feed to next page.
+           */
+        GrSaveState( gstate );
+        @call self::MSG_VIS_LARGE_TEXT_GET_REGION_POS( &regPos, iCurPage );
+        GrSetClipRect( gstate,
+                       PCT_REPLACE,
+                       sPageSize.PSR_margins.PCMP_left,
+                       sPageSize.PSR_margins.PCMP_top,
+                       pageWidth + sPageSize.PSR_margins.PCMP_right,
+                       regPos.VLTGRPRS_height +
+                       sPageSize.PSR_margins.PCMP_bottom );
+        GrApplyTranslationDWord( gstate,
+                                 sPageSize.PSR_margins.PCMP_left,
+                                 -( regPos.VLTGRPRS_yPosition -
+                                    sPageSize.PSR_margins.PCMP_top ) );
+        GrInitDefaultTransform( gstate );
+        @call self::MSG_VIS_DRAW( DF_PRINT, gstate );
+        GrRestoreState( gstate );
+        GrNewPage( gstate, PEC_FORM_FEED );
+    }
+
+      /*
+       * Restore previous text settings (font, point size, width).
+       */
+    @send self::MSG_META_SUSPEND();
+    @send self::MSG_VIS_TEXT_SET_FONT_ID( savedFont,
+                                          TEXT_ADDRESS_PAST_END,
+                                          1 );
+    @send self::MSG_VIS_TEXT_SET_POINT_SIZE( savedSize,
+                                             TEXT_ADDRESS_PAST_END,
+                                             1 );
+    @send self::MSG_VIS_LARGE_TEXT_SET_DRAFT_REGION_SIZE(
+        DWORD_X( textSize ), DWORD_Y( textSize ) );
+    @send self::MSG_META_UNSUSPEND();
+
+      /*
+       * Restore text modified state and re-enable undo.
+       * Wrap up the printing (tell PC if done or cancelled).
+       */
+    pself->TFETI_allowChanges = TRUE;
+    if ( FALSE == bTextChanged ) {
+        @send self::MSG_VIS_TEXT_SET_NOT_USER_MODIFIED();
+    }
+    @send process::MSG_GEN_PROCESS_UNDO_ACCEPT_ACTIONS();
+    if ( TRUE == bContinue ) {
+        @send printCtrlOD::MSG_PRINT_CONTROL_PRINTING_COMPLETED();
+    }
+    else {
+        @send printCtrlOD::MSG_PRINT_CONTROL_PRINTING_CANCELLED();
+    }
+} /* MSG_PRINT_START_PRINTING */
+
+/********************************************************************
+ *              MSG_VIS_TEXT_SET_POINT_SIZE
+ ********************************************************************
+ * SYNOPSIS:     Intercept the set point size message so we can
+ *               tell Undo to ignore the change.
+ * CALLED BY:    PointSizeControl
+ * PARAMETERS:   WWFixed pointSize
+ *               dword   rangeEnd
+ *               dword   rangeStart
+ * RETURNS:      void
+ * SIDE EFFECTS: Tells Undo to ignore point size change.
+ * STRATEGY:     Send message to process telling it to ignore the
+ *               next change to the target, then call superclass,
+ *               then turn Undo back on.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/01/95         Initial version
+ *******************************************************************/
+@extern method TFETextClass, MSG_VIS_TEXT_SET_POINT_SIZE {
+      /*
+       * bTextChanged - TRUE if text modified.
+       */
+    Boolean bTextChanged;
+
+      /*
+       * Update our copy of the current point size.
+       * Have Undo ignore next changes to text object.
+       * False to have it not flush the undo queue.
+       */
+    curPointSize_g = pointSize;
+    @call process::MSG_GEN_PROCESS_UNDO_IGNORE_ACTIONS( FALSE );
+    pself = ObjDerefVis( oself );
+EC( ECCheckBounds( pself ); )
+    pself->TFETI_allowChanges = FALSE;
+    bTextChanged = @call self::MSG_VIS_TEXT_GET_USER_MODIFIED_STATE();
+
+    @callsuper();
+
+      /*
+       * Check if text was modified previously and set appropriately.
+       * Re-enable undo actions.
+       */
+    if ( FALSE == bTextChanged ) {
+        @send self::MSG_VIS_TEXT_SET_NOT_USER_MODIFIED();
+    }
+    pself->TFETI_allowChanges = TRUE;
+    @send process::MSG_GEN_PROCESS_UNDO_ACCEPT_ACTIONS();
+} /* MSG_VIS_TEXT_SET_POINT_SIZE */
+
+/********************************************************************
+ *              MSG_VIS_TEXT_SET_FONT_ID
+ ********************************************************************
+ * SYNOPSIS:     Intercept the set font message so we can save the
+ *               new font ID and tell Undo to ignore the change.
+ * CALLED BY:    FontControl
+ * PARAMETERS:   FontID fid
+ *               dword  rangeEnd
+ *               dword  rangeStart
+ * RETURNS:      void
+ * SIDE EFFECTS: Tells Undo to ignore font change.
+ * STRATEGY:     Send message to process telling it to ignore the
+ *               next change to the target, then call superclass,
+ *               then turn Undo back on.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      4/1/95          Initial version
+ *******************************************************************/
+@extern method TFETextClass, MSG_VIS_TEXT_SET_FONT_ID {
+      /*
+       * bTextChanged - TRUE if text modified.
+       */
+    Boolean bTextChanged;
+
+      /*
+       * Update our copy of the current font ID.
+       * Have Undo ignore next changes to text object.
+       * False to have it not flush the undo queue.
+       * Call superclass.
+       */
+    curFontID_g = fid;
+    @call process::MSG_GEN_PROCESS_UNDO_IGNORE_ACTIONS( FALSE );
+    pself = ObjDerefVis( oself );
+EC( ECCheckBounds( pself ); )
+    pself->TFETI_allowChanges = FALSE;
+    bTextChanged = @call self::MSG_VIS_TEXT_GET_USER_MODIFIED_STATE();
+    @callsuper();
+
+      /*
+       * Check if text was modified previously and set appropriately.
+       * Re-enable undo actions.
+       */
+    if ( FALSE == bTextChanged ) {
+        @send self::MSG_VIS_TEXT_SET_NOT_USER_MODIFIED();
+    }
+    pself->TFETI_allowChanges = TRUE;
+    @send process::MSG_GEN_PROCESS_UNDO_ACCEPT_ACTIONS();
+} /* MSG_VIS_TEXT_SET_FONT_ID */
+
+/********************************************************************
+ *              MSG_VIS_TEXT_REPLACE_WITH_HWR
+ ********************************************************************
+ * SYNOPSIS:     Performs HWR on the passed ink block.
+ * CALLED BY:    GCN list mechanism
+ * PARAMETERS:   HWRContext      context
+ *               MemHandle       ink
+ *               VisTextHWRFlags flags
+ *               VisTextRange    range
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Basically call TextDoHWR and handle any possible
+ *               cases. Replace the current text selection with
+ *               with whatever comes back.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      EB      3/1/96          Initial version
+ *******************************************************************/
+@extern method TFETextClass, MSG_VIS_TEXT_REPLACE_WITH_HWR {
+@ifdef OMNIGO
+
+      /*
+       * hmemText - Block of recognized characters.
+       * pachText - Points to recognized characters.
+       */
+    MemHandle hmemText;
+    char *    pachText;
+
+EC( ECCheckMemHandle( ink ); )
+
+      /*
+       * If the text is editable, have the TextDoHWR turn
+       * the ink into a block of characters.
+       * If it works, replace the current selection with
+       * the recognized characters.
+       */
+    if ( pself->VTI_state & VTS_EDITABLE ) {
+        hmemText = TextDoHWR( ink, oself );
+        if ( NullHandle != hmemText ) {
+EC(         ECCheckMemHandle( hmemText ); )
+            pachText = MemLock( hmemText );
+EC(         ECCheckBounds( pachText ); )
+            if ( C_NULL != pachText[0] ) {
+                @call self::MSG_VIS_TEXT_REPLACE_SELECTION_PTR(
+                    pachText, 0 );
+            }
+              /*
+               * Free the recognized text.
+               */
+            MemFree( hmemText );
+        }
+    }
+      /*
+       * Signal that we've processed the ink and
+       * the block can be freed.
+       *
+       * This leads to a NOT_MEM_HANDLE error later
+       * when document object tries to handle notify.
+       * Somehow the TFEDocumentClass is getting the
+       * MSG_META_NOTIFY_WITH_DATA_BLOCK message and
+       * is trying to handle it. The reference count
+       * on the data block is only ever 1, so somehow
+       * two objects are handling this message.
+    MemDecRefCount( ink );
+       */
+
+@else
+
+      /*
+       * Incrementing the reference count keeps the block
+       * around a little longer. If we don't do this we'll
+       * get either HANDLE_FREE or NOT_MEM_HANDLE error.
+       * This is related to the problem above with
+       * MemDecRefCount and the content handler.
+       *
+       * Call superclass, which does everything we are
+       * doing except it doesn't deal with ink gestures.
+       */
+    MemIncRefCount( ink );
+    @callsuper();
+
+@endif
+} /* MSG_VIS_TEXT_REPLACE_WITH_HWR */
+

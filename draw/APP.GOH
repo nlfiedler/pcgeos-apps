@@ -1,0 +1,100 @@
+/********************************************************************
+ *
+ *       Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      Application Header
+ * FILE:        app.goh
+ *
+ * AUTHORS:     Allen Schoonmaker
+ *              Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *       AS     3/6/92          Initial version
+ *       NF     7/1/95          Converted to Zoomer application and
+ *                              added more functionality.
+ *       NF     2/26/96         Made compilable for OmniGo.
+ *
+ * DESCRIPTION:
+ *      This file contains constants, structures, and classes.
+ *
+ *******************************************************************/
+
+#ifndef __APP_GOH
+#define __APP_GOH
+
+   /*
+    * Turn on specific platform code.
+    */
+@define OMNIGO
+#define OMNIGO
+/*
+@define ZOOMER
+#define ZOOMER
+*/
+
+/********************************************************************
+ *              Constants
+ *******************************************************************/
+       /* Document protocol numbers. */
+    #define DOCUMENT_PROTOCOL_MAJOR 1
+    #define DOCUMENT_PROTOCOL_MINOR 0
+
+       /* Size of document. */
+    #define DOCUMENT_WIDTH  ( 8.5 * 72 )
+    #define DOCUMENT_HEIGHT ( 11  * 72 )
+
+       /* Maximum zoom percentage on view control. */
+    #define GVC_MAXIMUM_ZOOM 1600
+
+       /* draw category in GEOS.INI file. */
+    #define INIT_CATEGORY "BMS-PDA-Draw"
+
+       /* Position of menu groups. */
+    #define TRANSFORM_MENU_POSITION 4
+    #define ATTRIBUTE_MENU_POSITION 6
+    #define TEXT_MENU_POSITION      7
+
+/********************************************************************
+ *              Structure Definitions
+ *******************************************************************/
+
+       /*
+        * This is the structure of information stored in the
+        * VM file's map block.
+        */
+    typedef struct {
+           /* VM block handle of the block
+            * that contains the GrObjBody and
+            * the GrObjAttributeManager. */
+        VMBlockHandle  DMB_vmhGrObjBody;
+           /* Page size. */
+        PageSizeReport DMB_pageSize;
+    } DMapBlock;
+
+/********************************************************************
+ *              Class Definitions
+ *******************************************************************/
+    @class DProcessClass, GenProcessClass;
+    @endc;
+
+    @class DDocumentClass, GenDocumentClass;
+      /* Set the document bounds. */
+    @message void MSG_D_DOC_SET_BOUNDS( PageSizeReport * psr );
+      /* Show/Hide the rulers. */
+    @message void MSG_D_DOCUMENT_SHOW_RULERS(
+                      RulerShowControlAttributes flags );
+          /*
+           * DDI_pageSize - Size of page.
+           */
+        @instance PageSizeReport DDI_pageSize;
+    @endc;
+
+      /* We need to intercept some messages. */
+    @class DRulerShowControlClass, RulerShowControlClass;
+    @endc;
+
+#endif
+

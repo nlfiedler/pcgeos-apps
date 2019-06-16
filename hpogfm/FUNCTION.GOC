@@ -1,0 +1,1044 @@
+/********************************************************************
+ *
+ * PROJECT:     Hewlett-Packard OmniGo 100 File Manager
+ * MODULE:      Global Function Definitions
+ * FILE:        function.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      12/14/95        Initial version
+ *
+ * DESCRIPTION:
+ *      These are the function definitions for the file services.
+ *      This includes functions to change directories, delete
+ *      files/folders, display information to the screen, such
+ *      as path and free space.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Internal/Jedi/jtable.goh>
+    #include <Ansi/string.h>            /* strcpy,strcat,strncat */
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              BuildNewPath
+ ********************************************************************
+ * SYNOPSIS:     Builds full path from path and file name.
+ * SIDE EFFECTS: none
+ * STRATEGY:     If the path is just the backslash, then copy
+ *               just the filename to the return string. Else,
+ *               copy the path, then append a backslash, then
+ *               copy the file name.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+BuildNewPath( char * dest,
+              char * path,
+              char * file )
+  /*
+   * dest - Destination string (out).
+   * path - Path to current directory (in).
+   * file - Directory name to add to path (in).
+   */
+{
+
+    if ( ( 0 == strcmp( path, "\\" ) ) ||
+         ( 0 == strlen( path ) ) ) {
+        strcpy( dest, "\\" );
+        strcat( dest, file );
+    }
+    else {
+        strcpy( dest, path );
+        strcat( dest, "\\" );
+        strcat( dest, file );
+    }
+} /* BuildNewPath */
+
+/********************************************************************
+ *              DeleteDirectory
+ ********************************************************************
+ * SYNOPSIS:     Deletes the specified directory.
+ * RETURNS:      TRUE if error deleting directory.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Delete the files in the directory, then delete
+ *               each directory by calling DeleteDirectory on them.
+ *               Move up to parent directory and remove the
+ *               specified directory.
+ * NOTE:         Disk is checked for writability before this
+ *               function is called. This function is recursive.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+Boolean
+DeleteDirectory( char * dirName_p )
+  /*
+   * dirName_p - Directory to delete (in).
+   */
+{
+      /* FE_params,
+       * FE_mhBuffer,
+       * FE_cExtraFound - FileEnum parameters.
+       * cDirItems      - Number of items in directory.
+       * paDirItems     - Items in directory.
+       * iCurDelItem    - Used to delete items.
+       * bError         - Indicates error.
+       */
+    FileEnumParams  FE_params;
+    MemHandle       FE_mhBuffer;
+    word            FE_cExtraFound;
+    word            cDirItems;
+    FENameAndAttr * paDirItems;
+    word            iCurDelItem;
+    Boolean         bError;
+
+      /*
+       * Open directory to delete.
+       * Get list of all files and folders.
+       *   Prepare parameters for FileEnum.
+       *   FILE_ENUM_ALL_FILE_TYPES gets directories too.
+       */
+    OpenDirectory( dirName_p );
+    FE_params.FEP_searchFlags = FILE_ENUM_ALL_FILE_TYPES;
+    FE_params.FEP_returnAttrs = (void*)FESRT_NAME_AND_ATTR;
+    FE_params.FEP_returnSize = sizeof( FENameAndAttr );
+    FE_params.FEP_matchAttrs = 0;
+    FE_params.FEP_bufSize = FE_BUFSIZE_UNLIMITED;
+    FE_params.FEP_skipCount = 0;
+    FE_params.FEP_callback = 0;
+    FE_params.FEP_callbackAttrs = 0;
+    FE_params.FEP_cbData1 = 0;
+    FE_params.FEP_cbData2 = 0;
+    FE_params.FEP_headerSize = 0;
+    FE_mhBuffer = NullHandle;
+    FE_cExtraFound = 0;
+
+    bError = FALSE;
+    cDirItems = FileEnum( &FE_params, &FE_mhBuffer, &FE_cExtraFound );
+    if ( 0 < cDirItems ) {
+          /*
+           * Delete each item in this directory, including
+           * other directories.
+           */
+EC(     ECCheckMemHandle( FE_mhBuffer ); )
+        paDirItems = MemLock( FE_mhBuffer );
+EC(     ECCheckBounds( paDirItems ); )
+        iCurDelItem = 0;
+        while ( ( iCurDelItem < cDirItems ) &&
+                ( FALSE == bCancelProcess_g ) &&
+                ( FALSE == bError ) ) {
+            if ( paDirItems[iCurDelItem].FENAA_attr & FA_SUBDIR ) {
+                  /*
+                   * Item is a directory.
+                   */
+                if ( DeleteDirectory(
+                         paDirItems[iCurDelItem].FENAA_name ) ) {
+                    bError = TRUE;
+                }
+            }
+            else {
+                  /*
+                   * Item is a file.
+                   */
+                if ( FileDelete( paDirItems[iCurDelItem].FENAA_name ) ) {
+                    bError = TRUE;
+                }
+            }
+            iCurDelItem++;
+        } /* while */
+        MemFree( FE_mhBuffer );
+    } /* if */
+
+      /*
+       * Go up to parent directory.
+       * Delete specified directory.
+       * Return error code.
+       */
+    if ( ( !bError ) && ( FALSE == bCancelProcess_g ) ) {
+        ParentDirectory();
+        if ( FileDeleteDir( dirName_p ) ) {
+            bError = TRUE;
+        }
+    }
+    return( bError );
+} /* DeleteDirectory */
+
+/********************************************************************
+ *              DisplayCurrentPath
+ ********************************************************************
+ * SYNOPSIS:     Update the current path.
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call FileConstructFullPath. Use that to construct
+ *               a path, along witht the current disk name. Then
+ *               send that information to the text object.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+DisplayCurrentPath( void )
+{
+      /*
+       * acrCurPath,
+       * dhCurDisk   - Used to get current path.
+       * mhPath,
+       * pPath,
+       * cPathLen    - Path of current directory.
+       * acrDiskName - Name of the current disk.
+       */
+    FMPathBuffer acrCurPath;
+    DiskHandle   dhCurDisk;
+    MemHandle    mhPath;
+    char *       pPath;
+    word         cPathLen;
+    VolumeName   acrDiskName;
+
+      /*
+       * First get the relative path information.
+       * Allocate a block for the path buffer.
+       * Get the name of the current drive and add :[ to it.
+       * Then append the disk volume name and ].
+       * Add the current directory path.
+       * Dereference the pointer again, since FileConstruct-
+       * FullPath changes it.
+       */
+    dhCurDisk = FileGetCurrentPath( acrCurPath, FM_PATH_BUFFER_SIZE );
+    mhPath = MemAlloc( FM_PATH_BUFFER_SIZE, 0, HAF_ZERO_INIT );
+EC( ECCheckMemHandle( mhPath ); )
+    pPath = (char*)MemLock( mhPath );
+EC( ECCheckBounds( pPath ); )
+    DriveGetName( DiskGetDrive( dhCurDisk ),
+                  pPath, DRIVE_NAME_MAX_LENGTH );
+    strncat( pPath, ":[", 2 );
+    cPathLen = LocalStringSize( pPath );
+    DiskGetVolumeName( dhCurDisk, ( pPath + cPathLen ) );
+    strncat( pPath, "]", 1 );
+    pPath += LocalStringSize( pPath );
+EC( ECCheckBounds( pPath ); )
+    FileConstructFullPath( &pPath, FM_PATH_BUFFER_SIZE,
+                           dhCurDisk, acrCurPath, FALSE );
+    pPath = (char*)MemDeref( mhPath );
+EC( ECCheckBounds( pPath ); )
+
+      /*
+       * Send current path to text object.
+       * Free the path buffer block.
+       */
+    @call FMVolumePathText::MSG_VIS_TEXT_REPLACE_ALL_PTR( pPath,
+        LocalStringSize( pPath ) );
+    MemFree( mhPath );
+} /* DisplayCurrentPath */
+
+/********************************************************************
+ *              DisplayDirectorySort
+ ********************************************************************
+ * SYNOPSIS:     Sort routine used in DisplayDirectory.
+ * CALLED BY:    ArrayQuickSort
+ * SIDE EFFECTS: none
+ * STRATEGY:     Compare the names of the two passed elements
+ *               and return a signed result. Can also compare
+ *               based on the sizes of the two elements.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/2/96          Initial version
+ *******************************************************************/
+word _pascal
+DisplayDirectorySort( void * el1,
+                      void * el2,
+                      word   valueForCallback )
+  /*
+   * el1              - Pointer to first element.
+   * el2              - Pointer to second element.
+   * valueForCallback - Indicates which field to sort on.
+   */
+{
+      /*
+       * retVal - Return value (<0, 0, or >0).
+       */
+    word retVal;
+
+    switch ( valueForCallback ) {
+          /*
+           * Sort by name.
+           * Put directories before files. When both are
+           * same type, sort by name alphabetically.
+           */
+        case SORT_BY_NAME :
+            if ( ( ( ((ItemType*)el1)->IT_flags & IF_DIRECTORY ) &&
+                   ( ((ItemType*)el2)->IT_flags & IF_DIRECTORY ) ) ||
+                 ( ( ( ((ItemType*)el1)->IT_flags & IF_DIRECTORY ) == 0 ) &&
+                   ( ( ((ItemType*)el2)->IT_flags & IF_DIRECTORY ) == 0 ) ) ) {
+                retVal = LocalCmpStrings( ((ItemType*)el1)->IT_name,
+                                          ((ItemType*)el2)->IT_name, 0 );
+            }
+            if ( ( ((ItemType*)el1)->IT_flags & IF_DIRECTORY ) &&
+                 ( ( ((ItemType*)el2)->IT_flags & IF_DIRECTORY ) == 0 ) ) {
+                retVal = 0xFFFF;
+            }
+            if ( ( ( ((ItemType*)el1)->IT_flags & IF_DIRECTORY ) == 0 ) &&
+                 ( ((ItemType*)el2)->IT_flags & IF_DIRECTORY ) ) {
+                retVal = 1;
+            }
+            break;
+          /*
+           * Sort by size.
+           * Put large before small.
+           */
+        case SORT_BY_SIZE :
+            if ( ((ItemType*)el1)->IT_size <
+                 ((ItemType*)el2)->IT_size ) {
+                retVal = 1;
+            }
+            else {
+                if ( ((ItemType*)el1)->IT_size >
+                     ((ItemType*)el2)->IT_size ) {
+                    retVal = 0xFFFF;
+                }
+                else {
+                    retVal = 0;
+                }
+            }
+            break;
+        default:
+            retVal = 0;
+            break;
+    }
+    return( retVal );
+} /* DisplayDirectorySort */
+
+/********************************************************************
+ *              DisplayDirectory
+ ********************************************************************
+ * SYNOPSIS:     Get a listing of the items and folders in this
+ *               directory and put them in the chunk array FMItems.
+ * RETURNS:      void
+ * SIDE EFFECTS: Redraws table, scrolls table to first row.
+ * STRATEGY:     Call FileEnum to get a list of all the items in
+ *               the directory. Use the results to create array
+ *               elements with all of the needed information.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *      NF      9/2/96          Added sorting capability
+ *******************************************************************/
+void
+DisplayDirectory( void )
+{
+      /*
+       * FE_params,
+       * FE_mhBuffer,
+       * FE_cExtraFound - FileEnum parameters.
+       * cDirItems      - Number of items in directory.
+       * paDirItems     - Array of items in directory.
+       * iCurItem       - Current item being added to table.
+       * qsortParams    - Parameters for ArrayQuickSort.
+       */
+    FileEnumParams      FE_params;
+    MemHandle           FE_mhBuffer;
+    word                FE_cExtraFound;
+    word                cDirItems;
+    FEDosInfo *         paDirItems;
+    ItemType *          pItem;
+    word                iCurItem;
+    QuickSortParameters qsortParams;
+
+      /*
+       * Get list of all files and folders.
+       *   Prepare parameters for FileEnum.
+       *   FILE_ENUM_ALL_FILE_TYPES gets directories too.
+       */
+    FE_params.FEP_searchFlags = FILE_ENUM_ALL_FILE_TYPES;
+    FE_params.FEP_returnAttrs = (void*)FESRT_DOS_INFO;
+    FE_params.FEP_returnSize = sizeof( FEDosInfo );
+    FE_params.FEP_matchAttrs = 0;
+    FE_params.FEP_bufSize = FE_BUFSIZE_UNLIMITED;
+    FE_params.FEP_skipCount = 0;
+    FE_params.FEP_callback = 0;
+    FE_params.FEP_callbackAttrs = 0;
+    FE_params.FEP_cbData1 = 0;
+    FE_params.FEP_cbData2 = 0;
+    FE_params.FEP_headerSize = 0;
+    FE_mhBuffer = NullHandle;
+    FE_cExtraFound = 0;
+
+      /*
+       * Get directory listing.
+       * Delete all existing array elements.
+       */
+    cDirItems = FileEnum( &FE_params, &FE_mhBuffer, &FE_cExtraFound );
+    MemLock( OptrToHandle( @FMItems ) );
+    ChunkArrayDeleteRange( @FMItems, 0, -1 );
+    if ( cDirItems ) {
+          /*
+           * Read the file entries and create new array
+           * elements using the file name and attributes.
+           */
+EC(     ECCheckMemHandle( FE_mhBuffer ); )
+        paDirItems = MemLock( FE_mhBuffer );
+EC(     ECCheckBounds( paDirItems ); )
+        for ( iCurItem = 0; iCurItem < cDirItems; iCurItem++ ) {
+            ChunkArrayAppend( @FMItems, 0 );
+            pItem = ChunkArrayElementToPtr( @FMItems, iCurItem,
+                                            &FE_cExtraFound );
+EC(         ECCheckBounds( pItem ); )
+              /*
+               * Copy file name.
+               * Calculate file size in Kbytes.
+               * Set directory flag.
+               * Get date/time stamp.
+               */
+            strcpy( pItem->IT_name, paDirItems[iCurItem].DFIS_name );
+            pItem->IT_size = paDirItems[iCurItem].DFIS_fileSize;
+            if ( ( 0 != pItem->IT_size ) && ( 1024 > pItem->IT_size ) ) {
+                pItem->IT_size = 1;
+            }
+            else {
+                pItem->IT_size = ( pItem->IT_size >> 10 );
+            }
+            pItem->IT_flags = 0;
+            if ( paDirItems[iCurItem].DFIS_attributes & FA_SUBDIR ) {
+                pItem->IT_flags |= IF_DIRECTORY;
+            }
+            pItem->IT_date = paDirItems[iCurItem].DFIS_modTimeDate;
+        }
+          /*
+           * Free the block of items.
+           * Set the table row count and redraw the table.
+           */
+        MemFree( FE_mhBuffer );
+        pItem = ChunkArrayElementToPtr( @FMItems, 0, &FE_cExtraFound );
+EC(     ECCheckBounds( pItem ); )
+        qsortParams.QSP_compareCallback = DisplayDirectorySort;
+        qsortParams.QSP_lockCallback = NULL;
+        qsortParams.QSP_unlockCallback = NULL;
+        qsortParams.QSP_insertLimit = 10;
+        qsortParams.QSP_medianLimit = 20;
+        ArrayQuickSort( pItem, cDirItems, sizeof( ItemType ),
+                        SORT_BY_NAME, &qsortParams );
+    }
+    MemUnlock( OptrToHandle( @FMItems ) );
+    @send FMDirectory::MSG_TABLE_SET_ROW_COUNT( cDirItems );
+    @send FMDirectory::MSG_TABLE_SCROLL_TO_ROW( 0 );
+    @send FMDirectory::MSG_TABLE_REDRAW_TABLE();
+} /* DisplayDirectory */
+
+/********************************************************************
+ *              NumberToString
+ ********************************************************************
+ * SYNOPSIS:     Given a number in word format, return a string
+ *               representing that number.
+ * CALLED BY:    Any function or method.
+ * RETURNS:      Size of the string.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Convert number to string format. Then work through
+ *               it backwards, placing thousands place separators
+ *               every three characters.
+ * NOTE:         Tested using a testwrapper for values from 1 to
+ *               100,000,000 in multiples of 10.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+word
+NumberToString( dword  number_p,
+                int    size_p,
+                char * buffer_p )
+  /*
+   * number_p - Number to convert (in).
+   * size_p   - Size of buffer (in).
+   * buffer_p - Number as a string (out).
+   */
+{
+      /*
+       * length       - Length of string in characters.
+       * numberFormat - Format of the numbers.
+       * iCurChar     - Current character being scanned.
+       * iInsertChar  - Used in inserting a space.
+       */
+    word               length;
+    LocalNumericFormat numberFormat;
+    int                iCurChar;
+    int                iInsertChar;
+
+    length = UtilHex32ToAscii( buffer_p, number_p, UHTAF_NULL_TERMINATE );
+    LocalGetNumericFormat( &numberFormat );
+    if ( numberFormat.thousandsSeparator ) {
+        if ( 4 == LocalStringSize( "Test" ) ) {
+               /* One byte characters. */
+            iCurChar = (int)length - 3;
+            while ( iCurChar > 0 ) {
+                for ( iInsertChar = ( size_p - 1 );
+                      iInsertChar > iCurChar;
+                      iInsertChar-- ) {
+                    buffer_p[iInsertChar] = buffer_p[iInsertChar-1];
+                }
+                length++;
+                buffer_p[iCurChar] = (char)numberFormat.thousandsSeparator;
+                iCurChar -= 3;
+            }
+        }
+        else {
+            /* Two byte characters. This currently won't work.
+             * Need to change buffer_p to word *. */
+            iCurChar = (int)length - 6;
+            while ( iCurChar > 0 ) {
+                for ( iInsertChar = ( size_p - 2 );
+                      iInsertChar > iCurChar;
+                      iInsertChar -= 2 ) {
+                    buffer_p[iInsertChar] = buffer_p[iInsertChar-2];
+                }
+                length += 2;
+                buffer_p[iCurChar] = (word)numberFormat.thousandsSeparator;
+                iCurChar -= 6;
+            }
+        }
+    }
+    return( length );
+} /* NumberToString */
+
+/********************************************************************
+ *              DisplaySpaceFree
+ ********************************************************************
+ * SYNOPSIS:     Update the current space available.
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call DiskGetVolumeSpaceFree and NumberToString.
+ *               Then send that information to the two text objects.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+DisplaySpaceFree( void )
+{
+      /*
+       * acrTemp      - Used to get disk handle.
+       * cSpaceFree,
+       * acrSpaceFree - Space available on disk.
+       */
+    char  acrTemp[1];
+    dword cSpaceFree;
+    char  acrSpaceFree[50];
+
+      /*
+       * Get space free on volume.
+       * Convert number to string, with commas.
+       * Send current space available to text object.
+       */
+    cSpaceFree = DiskGetVolumeFreeSpace(
+        FileGetCurrentPath( acrTemp, 0 ) );
+    NumberToString( cSpaceFree, 50, acrSpaceFree );
+    @call FMSpaceAvailText::MSG_VIS_TEXT_REPLACE_ALL_PTR(
+        acrSpaceFree, LocalStringSize( acrSpaceFree ) );
+    @call FMSpaceAvailText::MSG_VIS_TEXT_APPEND_PTR(
+        " bytes free.", 12 );
+} /* DisplaySpaceFree */
+
+/********************************************************************
+ *	        ErrorMessage
+ ********************************************************************
+ * SYNOPSIS:     Display an error message, then return to caller.
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Ensures odMessage is valid. Doesn't check
+ *               return value from UserStandardDialog.
+ * STRATEGY:     First check the input, then lock down the memory
+ *               and call UserStandardDialog, passing the dereferenced
+ *               pointer to the message. Then unlock the memory.
+ * REVISION HISTORY:
+ *	Name	Date		Description
+ *	----	----		-----------
+ *      NF      7/9/96          Initial version
+ *      NF      9/19/96         Added two additional parameters
+ *******************************************************************/
+void
+ErrorMessage( optr   odMessage_p,
+              char * string1,
+              char * string2 )
+  /*
+   * odMessage_p - Message to display (in).
+   * string1     - String to display in message (in).
+   * string2     - Second string to display in message (in).
+   */
+{
+      /*
+       * acrMessage - Pointer to message.
+       */
+    char * acrMessage;
+
+EC( ECCheckLMemOD( odMessage_p ); )
+    MemLock( OptrToHandle( odMessage_p ) );
+    acrMessage = (char*)LMemDeref( odMessage_p );
+EC( ECCheckBounds( acrMessage ); )
+    UserStandardDialog( (char*)0, (char*)0, string2, string1,
+        acrMessage, ( CDT_ERROR << CDBF_DIALOG_TYPE_OFFSET ) |
+        ( GIT_NOTIFICATION << CDBF_INTERACTION_TYPE_OFFSET ) );
+    MemUnlock( OptrToHandle( odMessage_p ) );
+} /* ErrorMessage */
+
+/********************************************************************
+ *              FileExists
+ ********************************************************************
+ * SYNOPSIS:     Checks if the named file exists in the current
+ *               directory.
+ * RETURNS:      TRUE if file exists in current directory.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Do a FileEnum and see how many matches we get.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+Boolean
+FileExists( char * fileName_p )
+  /*
+   * fileName_p - File to find (in).
+   */
+{
+      /*
+       * FE_params,
+       * FE_returnAttrs,
+       * FE_matchAttrs,
+       * FE_mhBuffer,
+       * FE_cExtraFound - FileEnum parameters.
+       */
+    FileEnumParams  FE_params;
+    FileExtAttrDesc FE_returnAttrs[2];
+    FileExtAttrDesc FE_matchAttrs[2];
+    MemHandle       FE_mhBuffer;
+    word            FE_cExtraFound;
+
+      /*
+       * Prepare to find file.
+       *   Look at all file types.
+       *   Get a dummy return value, since that works
+       *   and FESRT_COUNT_ONLY does not.
+       *   Use the given name to compare.
+       */
+    FE_returnAttrs[0].FEAD_attr = FEA_PATH_INFO;
+    FE_returnAttrs[0].FEAD_value = 0;
+    FE_returnAttrs[0].FEAD_size = sizeof( DirPathInfo );
+    FE_returnAttrs[0].FEAD_name = 0;
+    FE_returnAttrs[1].FEAD_attr = FEA_END_OF_LIST;
+    FE_returnAttrs[1].FEAD_value = 0;
+    FE_returnAttrs[1].FEAD_size = 0;
+    FE_returnAttrs[1].FEAD_name = 0;
+    FE_matchAttrs[0].FEAD_attr = FEA_NAME;
+    FE_matchAttrs[0].FEAD_value = fileName_p;
+    FE_matchAttrs[0].FEAD_size = sizeof( FileLongName );
+    FE_matchAttrs[0].FEAD_name = 0;
+    FE_matchAttrs[1] = FE_returnAttrs[1];
+    FE_params.FEP_searchFlags = FILE_ENUM_ALL_FILE_TYPES;
+    FE_params.FEP_returnAttrs = &FE_returnAttrs[0];
+    FE_params.FEP_returnSize = sizeof( DirPathInfo );
+    FE_params.FEP_matchAttrs = &FE_matchAttrs[0];
+    FE_params.FEP_bufSize = FE_BUFSIZE_UNLIMITED;
+    FE_params.FEP_skipCount = 0;
+    FE_params.FEP_callback = 0;
+    FE_params.FEP_callbackAttrs = 0;
+    FE_params.FEP_cbData1 = 0;
+    FE_params.FEP_cbData2 = 0;
+    FE_params.FEP_headerSize = 0;
+    FE_mhBuffer = NullHandle;
+    FE_cExtraFound = 0;
+
+      /*
+       * Check if file is in this directory.
+       *   If so, return TRUE.
+       *   If not, return FALSE.
+       */
+    if ( FileEnum( &FE_params, &FE_mhBuffer, &FE_cExtraFound ) ) {
+EC(     ECCheckMemHandle( FE_mhBuffer ); )
+        MemFree( FE_mhBuffer );
+        return( TRUE );
+    }
+    else {
+        if ( NullHandle != FE_mhBuffer ) {
+EC(         ECCheckMemHandle( FE_mhBuffer ); )
+            MemFree( FE_mhBuffer );
+        }
+        return( FALSE );
+    }
+} /* FileExists */
+
+/********************************************************************
+ *              GetCurrentPath
+ ********************************************************************
+ * SYNOPSIS:     Gets the current path and returns it in the passed
+ *               string.
+ * RETURNS:      Handle of current disk, as returned from
+ *               FileConstructFullPath.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Get the current path string and copy it to the
+ *               passed string.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+DiskHandle
+GetCurrentPath( char * pathName_p )
+  /*
+   * pathName_p - Buffer for path (out).
+   */
+{
+      /*
+       * mhCurPath   - Saves space on stack.
+       * pacrCurPath - Current relative path now.
+       * dhCurDisk   - Used to get current path.
+       */
+    MemHandle  mhCurPath;
+    char *     pacrCurPath;
+    DiskHandle dhCurDisk;
+
+      /*
+       * First get the relative path information.
+       * Get current path and disk handle.
+       */
+    mhCurPath = MemAlloc( FM_PATH_BUFFER_SIZE, 0, HAF_ZERO_INIT );
+EC( ECCheckMemHandle( mhCurPath ); )
+    pacrCurPath = (char*)MemLock( mhCurPath );
+EC( ECCheckBounds( pacrCurPath ); )
+    dhCurDisk = FileGetCurrentPath( pacrCurPath, FM_PATH_BUFFER_SIZE );
+    if ( '\\' == pacrCurPath[0] ) {
+        dhCurDisk = FileConstructFullPath( &pathName_p,
+            FM_PATH_BUFFER_SIZE, dhCurDisk, ( pacrCurPath + 1 ), FALSE );
+    }
+    else {
+        dhCurDisk = FileConstructFullPath( &pathName_p,
+            FM_PATH_BUFFER_SIZE, dhCurDisk, pacrCurPath, FALSE );
+    }
+
+      /*
+       * Free the path buffer block.
+       */
+    MemFree( mhCurPath );
+    return( dhCurDisk );
+} /* GetCurrentPath */
+
+/********************************************************************
+ *              GetFirstSelectedItem
+ ********************************************************************
+ * SYNOPSIS:     Find the index of the first selected item.
+ * RETURNS:      0xFFFF if no items selected.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Lock down the list of items, and loop through
+ *               them looking for the first one that has its
+ *               selection bit set. Unlock and return the index.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/3/96          Initial version
+ *******************************************************************/
+word
+GetFirstSelectedItem( void )
+{
+      /*
+       * cItems        - Number of items in directory.
+       * pItem         - Pointer to item being changed.
+       * iCurItem      - Current item being changed.
+       * cElemSize     - Used to get pointer.
+       * iSelectedItem - Index of first selected item.
+       */
+    word       cItems;
+    ItemType * pItem;
+    word       iCurItem;
+    word       cElemSize;
+    word       iSelectedItem;
+
+    MemLock( OptrToHandle( @FMItems ) );
+    cItems = ChunkArrayGetCount( @FMItems );
+    iSelectedItem = 0xFFFF;
+    iCurItem = 0;
+    while ( ( 0xFFFF == iSelectedItem ) &&
+            ( iCurItem < cItems ) ) {
+        pItem = ChunkArrayElementToPtr( @FMItems, iCurItem, &cElemSize );
+        if ( pItem->IT_flags & IF_SELECTED ) {
+            iSelectedItem = iCurItem;
+        }
+        iCurItem++;
+    }
+    MemUnlock( OptrToHandle( @FMItems ) );
+    return( iSelectedItem );
+} /* GetFirstSelectedItem */
+
+/********************************************************************
+ *              GetNumSelected
+ ********************************************************************
+ * SYNOPSIS:     Find the number of selected items.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Lock down the list of items, and loop through
+ *               them counting up the ones that have their
+ *               selection bit set. Unlock and return count.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/2/96          Initial version
+ *******************************************************************/
+word
+GetNumSelected( void )
+{
+      /*
+       * cItems         - Number of items in directory.
+       * pItem          - Pointer to item being changed.
+       * iCurItem       - Current item being changed.
+       * cElemSize      - Used to get pointer.
+       * cSelectedItems - Number of selected items.
+       */
+    word       cItems;
+    ItemType * pItem;
+    word       iCurItem;
+    word       cElemSize;
+    word       cSelectedItems;
+
+    MemLock( OptrToHandle( @FMItems ) );
+    cItems = ChunkArrayGetCount( @FMItems );
+    cSelectedItems = 0;
+    for ( iCurItem = 0; iCurItem < cItems; iCurItem++ ) {
+        pItem = ChunkArrayElementToPtr( @FMItems, iCurItem, &cElemSize );
+        if ( pItem->IT_flags & IF_SELECTED ) {
+            cSelectedItems++;
+        }
+    }
+    MemUnlock( OptrToHandle( @FMItems ) );
+    return( cSelectedItems );
+} /* GetNumSelected */
+
+/********************************************************************
+ *              HideBusyBox
+ ********************************************************************
+ * SYNOPSIS:     Hide the processing dialog.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Send the IC_DISMISS command to the interaction
+ *               so it will go away.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+HideBusyBox( void )
+{
+
+    @send FMBusyBox::MSG_GEN_GUP_INTERACTION_COMMAND( IC_DISMISS );
+} /* HideBusyBox */
+
+/********************************************************************
+ *              MakeDriveList
+ ********************************************************************
+ * SYNOPSIS:     Creates list of available drives.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Start with lowest drive and test for existence
+ *               with DriveGetStatus. For each existing drive it
+ *               will add it's number to the global drive list.
+ *               If there are only three drives, then the first
+ *               three slots of aDrives_g will be filled. The
+ *               slots will have the drive number in them.
+ *               The slots are NOT filled based on the drive
+ *               number.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+MakeDriveList( void )
+{
+      /*
+       * numDrives      - Number of available drives.
+       * candidateDrive - Drive being queried.
+       */
+    word numDrives;
+    word candidateDrive;
+
+      /*
+       * Start drive query loop.
+       * For each drive that exists, add it's entry to
+       * the global drive list.
+       * Initialize dynamic list with number of drives.
+       */
+    numDrives = 0;
+    for ( candidateDrive = 0;
+          candidateDrive < HIGHEST_DRIVE;
+          candidateDrive++ ) {
+        if ( DriveGetStatus( candidateDrive ) ) {
+            aDrives_g[numDrives] = candidateDrive;
+            numDrives++;
+        }
+    }
+    @send FMDriveList::MSG_GEN_DYNAMIC_LIST_INITIALIZE( numDrives );
+} /* MakeDriveList */
+
+/********************************************************************
+ *              OpenDirectory
+ ********************************************************************
+ * SYNOPSIS:     Opens the specified directory.
+ * SIDE EFFECTS: Display is invalidated and must be updated.
+ * STRATEGY:     Get the current path string and append the
+ *               passed string. Set this as the new current directory.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+OpenDirectory( char * dirName_p )
+  /*
+   * dirName_p - Directory to open (in).
+   */
+{
+      /*
+       * acrCurPath,
+       * dhCurDisk  - Used to get current path.
+       */
+    FMPathBuffer acrCurPath;
+    DiskHandle   dhCurDisk;
+
+    dhCurDisk = FileGetCurrentPath( acrCurPath, FM_PATH_BUFFER_SIZE );
+    BuildNewPath( acrCurPath, acrCurPath, dirName_p );
+    FileSetCurrentPath( dhCurDisk, acrCurPath );
+} /* OpenDirectory */
+
+/********************************************************************
+ *              ParentDirectory
+ ********************************************************************
+ * SYNOPSIS:     Opens the parent directory.
+ * SIDE EFFECTS: Display is invalidated and must be updated.
+ * STRATEGY:     Get the current path string and remove the
+ *               last directory name. Set this as the new current
+ *               directory.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+ParentDirectory( void )
+{
+      /*
+       * parentPath - Path with current directory entry removed.
+       * parentDisk - Current character being examined by parser.
+       * iCurChar   -
+       */
+    FMPathBuffer parentPath;
+    DiskHandle   parentDisk;
+    int          iCurChar;
+
+      /*
+       * Get the current path into a string.
+       * Parse the string and remove the last directory entry.
+       * Set current path to this new path.
+       */
+    parentDisk = GetCurrentPath( parentPath );
+    iCurChar = strlen( parentPath );
+    while ( ( '\\' != parentPath[iCurChar] ) && ( 1 < iCurChar ) ) {
+        iCurChar--;
+    }
+    if ( 1 >= iCurChar ) {
+        parentPath[0] = '\\';
+        parentPath[1] = '\0';
+    }
+    else {
+        parentPath[iCurChar] = '\0';
+    }
+    FileSetCurrentPath( parentDisk, parentPath );
+} /* ParentDirectory */
+
+/********************************************************************
+ *              ShowBusyBox
+ ********************************************************************
+ * SYNOPSIS:     Show the processing dialog, for the users benefit.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Replace message text object with passed string.
+ *               Awaken the interaction to show the message.
+ *               Set the cancel flag to FALSE, that way processes
+ *               won't halt prematurely.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+void
+ShowBusyBox( char * message_p )
+  /*
+   * message_p - Message to display in box (in).
+   */
+{
+
+    @send FMBusyText::MSG_VIS_TEXT_REPLACE_ALL_PTR( message_p, 0 );
+    @send FMBusyBox::MSG_GEN_INTERACTION_INITIATE();
+    bCancelProcess_g = FALSE;
+} /* ShowBusyBox */
+
+/********************************************************************
+ *              TestDiskWritable
+ ********************************************************************
+ * SYNOPSIS:     Checks to see if the current drive is writable or
+ *               read-only.
+ * RETURNS:      Boolean - TRUE if disk writable.
+ * SIDE EFFECTS: none
+ * STRATEGY:     First get the disk handle of the current disk by
+ *               calling FileGetCurrentPath, then pass that to
+ *               DiskGetDrive. If the drive is 0, then it's the
+ *               OGO ROM disk. If it's not, call DiskCheckWritable
+ *               and return the result.
+ * NOTE:         This function checks disk for writability and is
+ *               OmniGo specific.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/22/96         Initial version
+ *******************************************************************/
+Boolean
+TestDiskWritable( DiskHandle hDisk_p )
+  /*
+   * hDisk_p - Disk to check, 0 for current (in).
+   */
+{
+      /*
+       * achCurPath - Used to get disk handle. We won't use this.
+       * hCurDisk   - Current disk handle.
+       */
+    char achCurPath[2];
+    DiskHandle hCurDisk;
+
+    if ( 0 == hDisk_p ) {
+        hCurDisk = FileGetCurrentPath( achCurPath, 1 );
+    }
+    else {
+        hCurDisk = hDisk_p;
+    }
+    if ( DRIVE_A == DiskGetDrive( hCurDisk ) ) {
+        return( FALSE );
+    }
+    else {
+          /*
+           * This routine is unreliable on the OmniGo
+           * ROM drive, so we check for that above.
+           */
+        return( DiskCheckWritable( hCurDisk ) );
+    }
+} /* TestDiskWritable */
+

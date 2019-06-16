@@ -1,0 +1,650 @@
+/********************************************************************
+ *
+ * PROJECT:     Expert Mode
+ * MODULE:      Static Objects Module
+ * FILE:        appUI.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *
+ * DESCRIPTION:
+ *      Allows the user to set various "expert" options. User can
+ *      turn on the Express menu, set the Express menu options,
+ *      turn on advanced document control features, and window
+ *      controls.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include "app.goh"
+
+/********************************************************************
+ *              Class Declarations
+ *******************************************************************/
+    @classdecl EMProcessClass, neverSaved;
+
+/********************************************************************
+ *              Method Declarations
+ *******************************************************************/
+    @extern method EMProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION;
+    @extern method EMProcessClass, MSG_EM_PROCESS_SAVE_SETTINGS;
+    @extern method EMProcessClass, MSG_EM_PROCESS_SET_EXPRESS_OPTIONS;
+    @extern method EMProcessClass, MSG_EM_PROCESS_SET_EM_CONTROL_OPTIONS;
+
+/********************************************************************
+ *              Global Variable Declarations
+ *******************************************************************/
+
+/********************************************************************
+ *              Static Object Resources
+ *******************************************************************/
+
+/********************************************************************
+ *              Application Resource
+ *******************************************************************/
+@start Application;
+
+@object GenApplicationClass EMApp = {
+    GI_visMoniker = list { @EMTextMoniker };
+    GI_comp = @EMPrimary;
+    gcnList( MANUFACTURER_ID_GEOWORKS, GAGCNLT_WINDOWS ) =
+        @EMPrimary;
+    HINT_APP_IS_PRODUCTIVITY_ORIENTED;
+}
+
+@visMoniker EMTextMoniker = "Expert Mode";
+@localize { "Name of the application." };
+
+@end Application;
+
+/********************************************************************
+ *              Interface Resource
+ *******************************************************************/
+@start Interface;
+
+  /* Primary window */
+@object GenPrimaryClass EMPrimary = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @EMFileGroup,
+              @EMExpressOptionsGroup,
+              @EMEMControlOptionsGroup,
+              @EMInterfaceLevelGroup,
+              @EMInterfaceOptionsGroup,
+              @EMLaunchLevelGroup,
+              @EMLaunchModelGroup,
+              @EMLaunchOptionsGroup,
+              @EMDocLevelGroup,
+              @EMDocOptionsGroup,
+              @EMWindowOptionsGroup,
+              @EMHelpOptionsGroup,
+              @EMExtraOptionsGroup;
+    ATTR_GEN_HELP_CONTEXT = "TOC";
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+    HINT_CENTER_CHILDREN_VERTICALLY;
+    HINT_SIZE_WINDOW_AS_DESIRED;
+@ifdef OMNIGO
+    HINT_MINIMIZE_CHILD_SPACING;
+@endif
+}
+
+  /* File menu */
+@object GenInteractionClass EMFileGroup = {
+    GI_attrs = @default | GA_KBD_SEARCH_PATH;
+    GI_comp = @EMSaveInfoTrigger,
+              @EMAboutBox;
+    GII_visibility = GIV_POPUP;
+    ATTR_GEN_INTERACTION_GROUP_TYPE = ( GIGT_FILE_MENU );
+    HINT_SEEK_MENU_BAR;
+}
+
+  /* Saves font and size info to GEOS.INI file. */
+@object GenTriggerClass EMSaveInfoTrigger = {
+    GI_visMoniker = 'S', "Save Settings";
+    @localize { "Saves the settings to the GEOS.INI file." };
+    GTI_destination = process;
+    GTI_actionMsg = MSG_EM_PROCESS_SAVE_SETTINGS;
+}
+
+  /* Credits and copyright messages */
+@object GenInteractionClass EMAboutBox = {
+    GI_visMoniker = 'A', "About";
+    @localize { "Name of dialog containing author." };
+    GI_comp = @EMAboutText1,
+              @EMAboutText2,
+              @EMAboutOkayTrigger;
+    GII_type = GIT_ORGANIZATIONAL;
+    GII_visibility = GIV_DIALOG;
+    ATTR_GEN_HELP_CONTEXT = "dbCredits";
+    HINT_CENTER_CHILDREN_HORIZONTALLY;
+}
+
+@object GenGlyphClass EMAboutText1 = {
+    GI_visMoniker = "Expert Mode";
+    @localize { "Title of program." };
+}
+
+@object GenGlyphClass EMAboutText2 = {
+    GI_visMoniker = "Blue Marsh Softworks";
+    @localize { "Name of author." };
+}
+
+  /* Makes About box go away. */
+@object GenTriggerClass EMAboutOkayTrigger = {
+    GI_attrs = @default | GA_SIGNAL_INTERACTION_COMPLETE;
+    ATTR_GEN_TRIGGER_INTERACTION_COMMAND = { IC_OK };
+    HINT_SEEK_REPLY_BAR;
+}
+
+
+
+  /* interfaceLevel options */
+@object GenBooleanGroupClass EMExpressOptionsGroup = {
+    GI_visMoniker = "Express Menu";
+    @localize { "Name of menu that turns on Express Menu." };
+    GI_comp = @EMUIEOExpressMenuItem,
+              @EMUIEODefaultItem,
+              @EMUIEODeskAccListItem,
+              @EMUIEOTaskListItem,
+              @EMUIEOMainAppsListItem,
+              @EMUIEOOtherAppsListItem,
+              @EMUIEOPrintPanelItem,
+              @EMUIEODosTaskListItem,
+              @EMUIEOUtilPanelItem
+@ifdef OMNIGO
+              ;
+@else
+              ,
+              @EMUIEOExitToDosItem;
+@endif
+    GBGI_destination = process;
+    GBGI_applyMsg = MSG_EM_PROCESS_SET_EXPRESS_OPTIONS;
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUIEOExpressMenuItem = {
+    GI_visMoniker = "Enable Express Menu";
+    @localize { "Turns on the Express Menu." };
+    GBI_identifier = 1;
+}
+
+@object GenBooleanClass EMUIEODefaultItem = {
+    GI_visMoniker = "Have \'Return to default launcher\'";
+    GBI_identifier = UIEO_RETURN_TO_DEFAULT_LAUNCHER;
+}
+
+@object GenBooleanClass EMUIEODeskAccListItem = {
+    GI_visMoniker = "Display desk accessories";
+    GBI_identifier = UIEO_GEOS_TASKS_LIST;
+}
+
+  /* Notice that the GBI_identifier for the previous
+   * and following items are swapped. This is to correct
+   * an error in UI.GOH. */
+
+@object GenBooleanClass EMUIEOTaskListItem = {
+    GI_visMoniker = "Display running GEOS apps";
+    GBI_identifier = UIEO_DESK_ACCESSORY_LIST;
+}
+
+@object GenBooleanClass EMUIEOMainAppsListItem = {
+    GI_visMoniker = "Display GEOS apps in World";
+    GBI_identifier = UIEO_MAIN_APPS_LIST;
+}
+
+@object GenBooleanClass EMUIEOOtherAppsListItem = {
+    GI_visMoniker = "Display GEOS apps under World";
+    GBI_identifier = UIEO_OTHER_APPS_LIST;
+}
+
+@object GenBooleanClass EMUIEOPrintPanelItem = {
+    GI_visMoniker = "Print control panel";
+    GBI_identifier = UIEO_CONTROL_PANEL;
+}
+
+@object GenBooleanClass EMUIEODosTaskListItem = {
+    GI_visMoniker = "Display running DOS apps";
+    GBI_identifier = UIEO_DOS_TASKS_LIST;
+}
+
+@object GenBooleanClass EMUIEOUtilPanelItem = {
+    GI_visMoniker = "Utilities panel";
+    GBI_identifier = UIEO_UTILITIES_PANEL;
+}
+
+@object GenBooleanClass EMUIEOExitToDosItem = {
+    GI_visMoniker = "Exit to DOS";
+    GBI_identifier = UIEO_EXIT_TO_DOS;
+}
+
+
+
+  /* expressMenuControl options */
+@object GenBooleanGroupClass EMEMControlOptionsGroup = {
+    GI_visMoniker = "Express Menu Control Options";
+    GI_comp = @EMUIEMKeyboardItem,
+              @EMUIEMNoMenusItem,
+              @EMUIEMOtherMenuItem,
+              @EMUIEMRunningMenuItem,
+              @EMUIEMRunMenuItem;
+    GBGI_destination = process;
+    GBGI_applyMsg = MSG_EM_PROCESS_SET_EM_CONTROL_OPTIONS;
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUIEMKeyboardItem = {
+    GI_visMoniker = "Floating Keyboard";
+    GBI_identifier = EM_EMCO_FLOATING_KEYBOARD;
+}
+
+@object GenBooleanClass EMUIEMNoMenusItem = {
+    GI_visMoniker = "No submenus";
+    GBI_identifier = EM_EMCO_NO_SUB_MENUS;
+}
+
+@object GenBooleanClass EMUIEMOtherMenuItem = {
+    GI_visMoniker = "Other apps in submenu";
+    GBI_identifier = EM_EMCO_OTHER_SUB_MENU;
+}
+
+@object GenBooleanClass EMUIEMRunningMenuItem = {
+    GI_visMoniker = "Running apps in submenu";
+    GBI_identifier = EM_EMCO_RUNNING_SUB_MENU;
+}
+
+@object GenBooleanClass EMUIEMRunMenuItem = {
+    GI_visMoniker = "Runnable apps in submenu";
+    GBI_identifier = EM_EMCO_RUN_SUB_MENU;
+}
+
+
+
+  /* interfaceLevel options */
+@object GenItemGroupClass EMInterfaceLevelGroup = {
+    GI_visMoniker = "Interface Level";
+    GI_comp = @EMUIILIntroductoryItem,
+              @EMUIILBeginnerItem,
+              @EMUIILIntermediateItem,
+              @EMUIILAdvancedItem,
+              @EMUIILGuruItem;
+    HINT_ITEM_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenItemClass EMUIILIntroductoryItem = {
+    GI_visMoniker = "Introductory";
+    GII_identifier = EM_UIIL_INTRO;
+}
+
+@object GenItemClass EMUIILBeginnerItem = {
+    GI_visMoniker = "Beginner";
+    GII_identifier = EM_UIIL_BEGIN;
+}
+
+@object GenItemClass EMUIILIntermediateItem = {
+    GI_visMoniker = "Intermediate";
+    GII_identifier = EM_UIIL_INTER;
+}
+
+@object GenItemClass EMUIILAdvancedItem = {
+    GI_visMoniker = "Advanced";
+    GII_identifier = EM_UIIL_ADV;
+}
+
+@object GenItemClass EMUIILGuruItem = {
+    GI_visMoniker = "Guru";
+    GII_identifier = EM_UIIL_GURU;
+}
+
+
+
+  /* interface options */
+@object GenBooleanGroupClass EMInterfaceOptionsGroup = {
+    GI_visMoniker = "Interface Options";
+    GI_comp = @EMUIIOOptionsItem,
+              @EMUIIONoPopoutsItem
+@ifdef OMNIGO
+              ;
+@else
+              ,
+              @EMUIIOHiddenMenusItem;
+@endif
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUIIOOptionsItem = {
+    GI_visMoniker = "Allow Options menu";
+    GBI_identifier = UIIO_OPTIONS_MENU;
+}
+
+@object GenBooleanClass EMUIIONoPopoutsItem = {
+    GI_visMoniker = "Disable popout menus/tools";
+    GBI_identifier = UIIO_DISABLE_POPOUTS;
+}
+
+@object GenBooleanClass EMUIIOHiddenMenusItem = {
+    GI_visMoniker = "Allow initially hidden menus";
+    GBI_identifier = UIIO_ALLOW_INITIALLY_HIDDEN_MENU_BARS;
+}
+
+
+
+   /* launchLevel options */
+@object GenItemGroupClass EMLaunchLevelGroup = {
+    GI_visMoniker = "Launch Level";
+    GI_comp = @EMUILLIntroductoryItem,
+              @EMUILLBeginnerItem,
+              @EMUILLIntermediateItem,
+              @EMUILLAdvancedItem;
+    HINT_ITEM_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenItemClass EMUILLIntroductoryItem = {
+    GI_visMoniker = "Introductory";
+    GII_identifier = EM_UILL_INTRO;
+}
+
+@object GenItemClass EMUILLBeginnerItem = {
+    GI_visMoniker = "Beginner";
+    GII_identifier = EM_UILL_BEGIN;
+}
+
+@object GenItemClass EMUILLIntermediateItem = {
+    GI_visMoniker = "Intermediate";
+    GII_identifier = EM_UILL_INTER;
+}
+
+@object GenItemClass EMUILLAdvancedItem = {
+    GI_visMoniker = "Advanced";
+    GII_identifier = EM_UILL_ADV;
+}
+
+
+
+  /* launchModel options */
+@object GenItemGroupClass EMLaunchModelGroup = {
+    GI_visMoniker = "Launch Model";
+    GI_comp = @EMUILMTransparentItem,
+              @EMUILMSingleItem,
+              @EMUILMMultipleItem,
+              @EMUILMGuruItem;
+    HINT_ITEM_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenItemClass EMUILMTransparentItem = {
+    GI_visMoniker = "One app at a time";
+    GII_identifier = UILM_TRANSPARENT;
+}
+
+@object GenItemClass EMUILMSingleItem = {
+    GI_visMoniker = "Single instance only";
+    GII_identifier = UILM_SINGLE_INSTANCE;
+}
+
+@object GenItemClass EMUILMMultipleItem = {
+    GI_visMoniker = "Multiple instances (asks)";
+    GII_identifier = UILM_MULTIPLE_INSTANCES;
+}
+
+@object GenItemClass EMUILMGuruItem = {
+    GI_visMoniker = "Guru (doesn't ask)";
+    GII_identifier = UILM_GURU;
+}
+
+
+
+  /* Launch options */
+@object GenBooleanGroupClass EMLaunchOptionsGroup = {
+    GI_visMoniker = "Launch Options";
+    GI_comp = @EMUILODeskAccItem,
+              @EMUILOClosableItem;
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUILODeskAccItem = {
+    GI_visMoniker = "Allow desk accessories";
+    GBI_identifier = UILO_DESK_ACCESSORIES;
+}
+
+@object GenBooleanClass EMUILOClosableItem = {
+    GI_visMoniker = "Allow closing apps";
+    GBI_identifier = UILO_CLOSABLE_APPS;
+}
+
+
+
+  /* docControlFSLevel options */
+@object GenItemGroupClass EMDocLevelGroup = {
+    GI_visMoniker = "DocControl Level";
+    GI_comp = @EMUIDCLNoDirsItem,
+              @EMUIDCSimpleItem,
+              @EMUIDCAdvancedItem;
+    HINT_ITEM_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenItemClass EMUIDCLNoDirsItem = {
+    GI_visMoniker = "No directories";
+    GII_identifier = EM_UIDC_NO_DIRS;
+}
+
+@object GenItemClass EMUIDCSimpleItem = {
+    GI_visMoniker = "Simple";
+    GII_identifier = EM_UIDC_SIMPLE;
+}
+
+@object GenItemClass EMUIDCAdvancedItem = {
+    GI_visMoniker = "Advanced";
+    GII_identifier = EM_UIDC_ADVANCED;
+}
+
+
+
+  /* docControlOptions */
+@object GenBooleanGroupClass EMDocOptionsGroup = {
+    GI_visMoniker = "DocControl Options";
+    GI_comp = @EMUIDOBigBoxItem,
+              @EMUIDOTransparentItem,
+              @EMUIDOFileOpenItem,
+              @EMUIDONoSimpleItem,
+@ifndef OMNIGO
+              @EMUIDOGoABoveDocItem,
+@endif
+              @EMUIDONoFullItem,
+              @EMUIDOMoveOtherItem,
+              @EMUIDONoDefaultItem,
+              @EMUIDONoNotesItem,
+              @EMUIDONoReadOnlyItem;
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUIDOBigBoxItem = {
+    GI_visMoniker = "No New/Open dialog";
+    GBI_identifier = EM_DCO_BYPASS_BIG_DIALOG;
+}
+
+@object GenBooleanClass EMUIDOTransparentItem = {
+    GI_visMoniker = "Only one document";
+    GBI_identifier = EM_DCO_TRANSPARENT_DOC;
+}
+
+@object GenBooleanClass EMUIDOFileOpenItem = {
+    GI_visMoniker = "Open in File menu";
+    GBI_identifier = EM_DCO_HAVE_FILE_OPEN;
+}
+
+@object GenBooleanClass EMUIDONoSimpleItem = {
+    GI_visMoniker = "No Simple/Advanced";
+    GBI_identifier = EM_DCO_FS_CANNOT_CHANGE;
+}
+
+@object GenBooleanClass EMUIDOGoABoveDocItem = {
+    GI_visMoniker = "Navigate above Document dir";
+    GBI_identifier = EM_DCO_NAVIGATE_ABOVE_DOC;
+}
+
+@object GenBooleanClass EMUIDONoFullItem = {
+    GI_visMoniker = "No Overlapping or Full-sized";
+    GBI_identifier = EM_DCO_NO_OVER_FULL;
+}
+
+@object GenBooleanClass EMUIDOMoveOtherItem = {
+    GI_visMoniker = "Move Other into File";
+    GBI_identifier = EM_DCO_MOVE_OTHER_TO_FILE;
+}
+
+@object GenBooleanClass EMUIDONoDefaultItem = {
+    GI_visMoniker = "No \'Open Default\'";
+    GBI_identifier = EM_DCO_NO_OPEN_DEFAULT;
+}
+
+@object GenBooleanClass EMUIDONoNotesItem = {
+    GI_visMoniker = "No notes in Open box";
+    GBI_identifier = EM_DCO_NO_NOTES_IN_OPEN;
+}
+
+@object GenBooleanClass EMUIDONoReadOnlyItem = {
+    GI_visMoniker = "No read-only option";
+    GBI_identifier = EM_DCO_NO_READ_ONLY;
+}
+
+
+
+  /* windowOptions */
+@object GenBooleanGroupClass EMWindowOptionsGroup = {
+    GI_visMoniker = "Window Options";
+    GI_comp = @EMUIWOMaximizeItem,
+              @EMUIWOCombineItem,
+              @EMUIWOMinMaxItem,
+              @EMUIWOWindoMenuItem,
+              @EMUIWOPinnableItem,
+              @EMUIWOKbdNavigationItem,
+              @EMUIWOPopoutMenusItem;
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUIWOMaximizeItem = {
+    GI_visMoniker = "Maximize windows";
+    GBI_identifier = UIWO_MAXIMIZE_ON_STARTUP;
+}
+
+@object GenBooleanClass EMUIWOCombineItem = {
+    GI_visMoniker = "Move menu bar into title";
+    GBI_identifier = UIWO_COMBINE_HEADER_AND_MENU_IN_MAXIMIZED_WINDOWS;
+}
+
+@object GenBooleanClass EMUIWOMinMaxItem = {
+    GI_visMoniker = "Provide Minimize/Maximize";
+    GBI_identifier = UIWO_PRIMARY_MIN_MAX_RESTORE_CONTROLS;
+}
+
+@object GenBooleanClass EMUIWOWindoMenuItem = {
+    GI_visMoniker = "Provide window control menu";
+    GBI_identifier = UIWO_WINDOW_MENU;
+}
+
+@object GenBooleanClass EMUIWOPinnableItem = {
+    GI_visMoniker = "Allow pinnable menus";
+    GBI_identifier = UIWO_PINNABLE_MENUS;
+}
+
+@object GenBooleanClass EMUIWOKbdNavigationItem = {
+    GI_visMoniker = "Allow keyboard shortcuts";
+    GBI_identifier = UIWO_KBD_NAVIGATION;
+}
+
+@object GenBooleanClass EMUIWOPopoutMenusItem = {
+    GI_visMoniker = "Allow popout menu bar";
+    GBI_identifier = UIWO_POPOUT_MENU_BAR;
+}
+
+
+
+  /* Help options */
+@object GenBooleanGroupClass EMHelpOptionsGroup = {
+    GI_visMoniker = "Help Options";
+    GI_comp = @EMUIHOHelpItem;
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUIHOHelpItem = {
+    GI_visMoniker = "Hide Help Buttons";
+    GBI_identifier = UIHO_HIDE_HELP_BUTTONS;
+}
+
+
+
+  /* Extra options */
+@object GenBooleanGroupClass EMExtraOptionsGroup = {
+    GI_visMoniker = "Extra Options";
+    GI_comp = @EMUIUIResetItem,
+@ifdef DESKTOP
+              @EMUICOHelpEditorItem,
+@endif
+              @EMUIINRebootItem,
+              @EMUIINBlinkingItem,
+              @EMUIINFocusItem,
+@ifdef DESKTOP
+              @EMUIINMenuItem,
+@endif
+              @EMUIINRaiseItem,
+              @EMUISYCenterItem;
+    HINT_BOOLEAN_GROUP_MINIMIZE_SIZE;
+}
+
+@object GenBooleanClass EMUIUIResetItem = {
+    GI_visMoniker = "Reset after crash";
+    GBI_identifier = EM_EO_RESET_AFTER_CRASH;
+}
+
+@object GenBooleanClass EMUICOHelpEditorItem = {
+    GI_visMoniker = "Enable help editor in GeoWrite";
+    GBI_identifier = EM_EO_HELP_EDITOR;
+}
+
+@object GenBooleanClass EMUIINRebootItem = {
+    GI_visMoniker = "Reboot on reset";
+    GBI_identifier = EM_EO_REBOOT_ON_RESET;
+}
+
+@object GenBooleanClass EMUIINBlinkingItem = {
+    GI_visMoniker = "Blinking cursor";
+    GBI_identifier = EM_EO_BLINKING_CURSOR;
+}
+
+@object GenBooleanClass EMUIINFocusItem = {
+    GI_visMoniker = "Click on window to type in text";
+    GBI_identifier = EM_EO_CLICK_TO_TYPE;
+}
+
+@object GenBooleanClass EMUIINMenuItem = {
+    GI_visMoniker = "Switch mouse buttons";
+    GBI_identifier = EM_EO_SELECT_DISPLAYS_MENU;
+}
+
+@object GenBooleanClass EMUIINRaiseItem = {
+    GI_visMoniker = "Click raises window";
+    GBI_identifier = EM_EO_SELECT_RAISES;
+}
+
+@object GenBooleanClass EMUISYCenterItem = {
+    GI_visMoniker = "Auto-center mouse";
+    GBI_identifier = EM_EO_AUTO_CENTER;
+}
+
+@end Interface;
+
+/********************************************************************
+ *              Strings Resource
+ * Localizable strings.
+ *******************************************************************/
+@start Strings, data;
+
+@chunk char acrSaveErrMsg[] = "Could not save to GEOS.INI!";
+
+@end Strings;
+

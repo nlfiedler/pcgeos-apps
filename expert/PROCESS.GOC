@@ -1,0 +1,645 @@
+/********************************************************************
+ *
+ * PROJECT:     Expert Mode
+ * MODULE:      Methods for Process Class
+ * FILE:        process.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *
+ * DESCRIPTION:
+ *      Code for the process object. This contains all the code
+ *      to load and save the "expert mode" settings.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    #include <initfile.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              EMEMCOptionsRead
+ ********************************************************************
+ * SYNOPSIS:     Reads in the Express menu control options.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check each boolean and set the bits appropriately.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+void
+EMEMCOptionsRead( void )
+{
+      /*
+       * options        - Options as they are in the .INI file.
+       * option         - Current boolean being checked.
+       * acrExpMenuCtrl - Uses less space.
+       */
+    word    options;
+    Boolean option;
+    char    acrExpMenuCtrl[] = "expressMenuControl";
+
+    options = 0;
+    if ( !InitFileReadBoolean( acrExpMenuCtrl, "noSubMenus", &option ) ) {
+        if ( option ) {
+            options |= EM_EMCO_NO_SUB_MENUS;
+        }
+    }
+    if ( !InitFileReadBoolean( acrExpMenuCtrl, "otherAppSubMenu",
+                               &option ) ) {
+        if ( option ) {
+            options |= EM_EMCO_OTHER_SUB_MENU;
+        }
+    }
+    if ( !InitFileReadBoolean( acrExpMenuCtrl, "runningAppSubMenu",
+                               &option ) ) {
+        if ( option ) {
+            options |= EM_EMCO_RUNNING_SUB_MENU;
+        }
+    }
+    if ( !InitFileReadBoolean( acrExpMenuCtrl, "runSubMenu", &option ) ) {
+        if ( option ) {
+            options |= EM_EMCO_RUN_SUB_MENU;
+        }
+    }
+    if ( !InitFileReadBoolean( acrExpMenuCtrl, "floatingKeyboard",
+                               &option ) ) {
+        if ( option ) {
+            options |= EM_EMCO_FLOATING_KEYBOARD;
+        }
+    }
+    @send EMEMControlOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+              options, 0 );
+    if ( EM_EMCO_NO_SUB_MENUS & options ) {
+        EMExpressMenuControls( FALSE );
+    }
+    else {
+        EMExpressMenuControls( TRUE );
+    }
+} /* EMEMCOptionsRead */
+
+/********************************************************************
+ *              EMEMCOptionsWrite
+ ********************************************************************
+ * SYNOPSIS:     Writes out the Express menu control options.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check each bit and write out the corresponding
+ *               boolean value.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+void
+EMEMCOptionsWrite( void )
+{
+      /*
+       * options        - Current Express menu control options.
+       * acrExpMenuCtrl - Uses less space.
+       */
+    word options;
+    char acrExpMenuCtrl[] = "expressMenuControl";
+
+    options = @call EMEMControlOptionsGroup::
+                        MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    if ( EM_EMCO_NO_SUB_MENUS & options ) {
+        InitFileWriteBoolean( acrExpMenuCtrl, "noSubMenus", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrExpMenuCtrl, "noSubMenus", FALSE );
+    }
+    if ( EM_EMCO_OTHER_SUB_MENU & options ) {
+        InitFileWriteBoolean( acrExpMenuCtrl, "otherAppSubMenu", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrExpMenuCtrl, "otherAppSubMenu", FALSE );
+    }
+    if ( EM_EMCO_RUNNING_SUB_MENU & options ) {
+        InitFileWriteBoolean( acrExpMenuCtrl, "runningAppSubMenu", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrExpMenuCtrl, "runningAppSubMenu", FALSE );
+    }
+    if ( EM_EMCO_RUN_SUB_MENU & options ) {
+        InitFileWriteBoolean( acrExpMenuCtrl, "runSubMenu", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrExpMenuCtrl, "runSubMenu", FALSE );
+    }
+    if ( EM_EMCO_FLOATING_KEYBOARD & options ) {
+        InitFileWriteBoolean( acrExpMenuCtrl, "floatingKeyboard", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrExpMenuCtrl, "floatingKeyboard", FALSE );
+    }
+} /* EMEMCOptionsWrite */
+
+/********************************************************************
+ *              EMExtraOptionsRead
+ ********************************************************************
+ * SYNOPSIS:     Reads in the extra options.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check each boolean and set the bits appropriately.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+void
+EMExtraOptionsRead( void )
+{
+      /*
+       * options - Options as they are in the .INI file.
+       * option - Current boolean being checked.
+       * acrInput - Uses less space.
+       */
+    word    options;
+    Boolean option;
+    char    acrInput[] = "input";
+
+    options = 0;
+    if ( !InitFileReadBoolean( "ui", "deleteStateFilesAfterCrash",
+                               &option ) ) {
+        if ( option ) {
+            options |= EM_EO_RESET_AFTER_CRASH;
+        }
+    }
+    if ( !InitFileReadBoolean( acrInput, "reboot on reset", &option ) ) {
+        if ( option ) {
+            options |= EM_EO_REBOOT_ON_RESET;
+        }
+    }
+    if ( !InitFileReadBoolean( acrInput, "blinkingCursor", &option ) ) {
+        if ( option ) {
+            options |= EM_EO_BLINKING_CURSOR;
+        }
+    }
+    if ( !InitFileReadBoolean( acrInput, "clickToType", &option ) ) {
+        if ( option ) {
+            options |= EM_EO_CLICK_TO_TYPE;
+        }
+    }
+    if ( !InitFileReadBoolean( acrInput, "selectDisplaysMenu", &option ) ) {
+        if ( option ) {
+            options |= EM_EO_SELECT_DISPLAYS_MENU;
+        }
+    }
+    if ( !InitFileReadBoolean( acrInput, "selectRaises", &option ) ) {
+        if ( option ) {
+            options |= EM_EO_SELECT_RAISES;
+        }
+    }
+    if ( !InitFileReadBoolean( "system", "autoCursorCentering", &option ) ) {
+        if ( option ) {
+            options |= EM_EO_AUTO_CENTER;
+        }
+    }
+    if ( !InitFileReadBoolean( "configure", "helpEditor", &option ) ) {
+        if ( option ) {
+            options |= EM_EO_HELP_EDITOR;
+        }
+    }
+    @send EMExtraOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+              options, 0 );
+} /* EMExtraOptionsRead */
+
+/********************************************************************
+ *              EMExtraOptionsWrite
+ ********************************************************************
+ * SYNOPSIS:     Writes out the extra options.
+ * SIDE EFFECTS: none
+ * STRATEGY:     Check each bit and write out the corresponding
+ *               boolean value.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+void
+EMExtraOptionsWrite( void )
+{
+      /*
+       * options   - Current Express menu control options.
+       * acrInput  - Uses less space.
+       * acrUI     - Uses less space.
+       * acrSystem - Uses less space.
+       * acrConfig - Uses less space.
+       */
+    word options;
+    char acrInput[] = "input";
+    char acrUI[] = "ui";
+    char acrSystem[] = "system";
+    char acrConfig[] = "configure";
+
+    options = @call EMExtraOptionsGroup::
+                        MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    if ( options & EM_EO_RESET_AFTER_CRASH ) {
+        InitFileWriteBoolean( acrUI, "deleteStateFilesAfterCrash", TRUE );
+        InitFileWriteBoolean( acrUI, "doNotDisplayResetBox", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrUI, "deleteStateFilesAfterCrash", FALSE );
+        InitFileWriteBoolean( acrUI, "doNotDisplayResetBox", FALSE );
+    }
+    if ( options & EM_EO_REBOOT_ON_RESET ) {
+        InitFileWriteBoolean( acrInput, "reboot on reset", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrInput, "reboot on reset", FALSE );
+    }
+    if ( options & EM_EO_BLINKING_CURSOR ) {
+        InitFileWriteBoolean( acrInput, "blinkingCursor", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrInput, "blinkingCursor", FALSE );
+    }
+    if ( options & EM_EO_CLICK_TO_TYPE ) {
+        InitFileWriteBoolean( acrInput, "clickToType", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrInput, "clickToType", FALSE );
+    }
+    if ( options & EM_EO_SELECT_DISPLAYS_MENU ) {
+        InitFileWriteBoolean( acrInput, "selectDisplaysMenu", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrInput, "selectDisplaysMenu", FALSE );
+    }
+    if ( options & EM_EO_SELECT_RAISES ) {
+        InitFileWriteBoolean( acrInput, "selectRaises", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrInput, "selectRaises", FALSE );
+    }
+    if ( options & EM_EO_AUTO_CENTER ) {
+        InitFileWriteBoolean( acrSystem, "autoCursorCentering", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrSystem, "autoCursorCentering", FALSE );
+    }
+    if ( options & EM_EO_HELP_EDITOR ) {
+        InitFileWriteBoolean( acrConfig, "helpEditor", TRUE );
+    }
+    else {
+        InitFileWriteBoolean( acrConfig, "helpEditor", FALSE );
+    }
+} /* EMExtraOptionsWrite */
+
+/********************************************************************
+ *              EMExpressMenu
+ ********************************************************************
+ * SYNOPSIS:     Turns on or off the Express menu.
+ * SIDE EFFECTS: none
+ * STRATEGY:     If parameter is TRUE, then enable all the Express
+ *               menu options in the list. Else, disable them.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+void
+EMExpressMenu( Boolean exists_p )
+  /*
+   * exists_p - TRUE to enable items (in)
+   */
+{
+
+    if ( exists_p ) {
+        @send EMUIEODefaultItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOTaskListItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEODeskAccListItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOMainAppsListItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOOtherAppsListItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOPrintPanelItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEODosTaskListItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOUtilPanelItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOExitToDosItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+    }
+    else {
+        @send EMUIEODefaultItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOTaskListItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEODeskAccListItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOMainAppsListItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOOtherAppsListItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOPrintPanelItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEODosTaskListItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOUtilPanelItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEOExitToDosItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+    }
+} /* EMExpressMenu */
+
+/********************************************************************
+ *              EMExpressMenuControls
+ ********************************************************************
+ * SYNOPSIS:     Turns on or off the Express menu controls.
+ * SIDE EFFECTS: none
+ * STRATEGY:     If parameter is TRUE, then enable all the Express
+ *               menu control options in the list. Else, disable them.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+void
+EMExpressMenuControls( Boolean exists_p )
+  /*
+   * exists_p - TRUE to enable items (in)
+   */
+{
+
+    if ( exists_p ) {
+        @send EMUIEMOtherMenuItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEMRunningMenuItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEMRunMenuItem::MSG_GEN_SET_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+    }
+    else {
+        @send EMUIEMOtherMenuItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEMRunningMenuItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMUIEMRunMenuItem::MSG_GEN_SET_NOT_ENABLED(
+                  VUM_DELAYED_VIA_APP_QUEUE );
+        @send EMEMControlOptionsGroup::
+                  MSG_GEN_BOOLEAN_GROUP_SET_BOOLEAN_STATE(
+                      EM_EMCO_OTHER_SUB_MENU, FALSE );
+        @send EMEMControlOptionsGroup::
+                  MSG_GEN_BOOLEAN_GROUP_SET_BOOLEAN_STATE(
+                      EM_EMCO_RUNNING_SUB_MENU, FALSE );
+        @send EMEMControlOptionsGroup::
+                  MSG_GEN_BOOLEAN_GROUP_SET_BOOLEAN_STATE(
+                      EM_EMCO_RUN_SUB_MENU, FALSE );
+    }
+} /* EMExpressMenuControls */
+
+/********************************************************************
+ *	          ErrorMessage
+ ********************************************************************
+ * SYNOPSIS:     Display an error message, then return to caller.
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Ensures odMessage is valid. Doesn't check
+ *               return value from UserStandardDialog.
+ * STRATEGY:     First check the input, then lock down the memory
+ *               and call UserStandardDialog, passing the dereferenced
+ *               pointer to the message. Then unlock the memory.
+ * REVISION HISTORY:
+ *	Name	Date		Description
+ *	----	----		-----------
+ *      NF      7/9/96          Initial version
+ *******************************************************************/
+void
+ErrorMessage( optr odMessage_p )
+  /*
+   * odMessage_p - Message to display (in).
+   */
+{
+
+      /*
+       * acrMessage - Pointer to message.
+       */
+    char * acrMessage;
+
+EC( ECCheckLMemOD( odMessage_p ); )
+    MemLock( OptrToHandle( odMessage_p ) );
+    acrMessage = (char*)LMemDeref( odMessage_p );
+EC( ECCheckBounds( acrMessage ); )
+    UserStandardDialog( (char*)0, (char*)0, (char*)0, (char*)0,
+        acrMessage, ( CDT_ERROR << CDBF_DIALOG_TYPE_OFFSET ) |
+        ( GIT_NOTIFICATION << CDBF_INTERACTION_TYPE_OFFSET ) );
+    MemUnlock( OptrToHandle( odMessage_p ) );
+} /* ErrorMessage */
+
+/********************************************************************
+ *              Method Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_OPEN_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Read the settings from the GEOS.INI file and set
+ *               the list selections.
+ * PARAMETERS:   AppAttachFlags attachFlags
+ *               MemHandle      launchBlock
+ *               MemHandle      extraState
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Use the InitFile.. routines and set the global
+ *               variables. Then send messages to the list objects.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+@extern method EMProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION {
+      /*
+       * curOption     - Holds each current option as it's read
+       *                 from .INI.
+       * acrUIFeatures - Uses less space.
+       */
+    word curOption;
+    char acrUIFeatures[] = "uiFeatures";
+
+    @callsuper();
+
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "expressOptions", &curOption );
+    @send EMExpressOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+                                     curOption, 0 );
+    if ( 1 & curOption ) {
+        EMExpressMenu( TRUE );
+    }
+    else {
+        EMExpressMenu( FALSE );
+    }
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "interfaceLevel", &curOption );
+    @send EMInterfaceLevelGroup::MSG_GEN_ITEM_GROUP_SET_SINGLE_SELECTION(
+                                     curOption, FALSE );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "interfaceOptions", &curOption );
+    @send EMInterfaceOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+                                       curOption, 0 );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "launchLevel", &curOption );
+    @send EMLaunchLevelGroup::MSG_GEN_ITEM_GROUP_SET_SINGLE_SELECTION(
+                                  curOption, FALSE );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "launchModel", &curOption );
+    @send EMLaunchModelGroup::MSG_GEN_ITEM_GROUP_SET_SINGLE_SELECTION(
+                                  curOption, FALSE );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "launchOptions", &curOption );
+    @send EMLaunchOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+                                    curOption, 0 );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "docControlFSLevel", &curOption );
+    @send EMDocLevelGroup::MSG_GEN_ITEM_GROUP_SET_SINGLE_SELECTION(
+                               curOption, FALSE );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "docControlOptions", &curOption );
+    @send EMDocOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+                                 curOption, 0 );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "windowOptions", &curOption );
+    @send EMWindowOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+                                    curOption, 0 );
+    curOption = 0;
+    InitFileReadInteger( acrUIFeatures, "helpOptions", &curOption );
+    @send EMHelpOptionsGroup::MSG_GEN_BOOLEAN_GROUP_SET_GROUP_STATE(
+                                  curOption, 0 );
+    EMEMCOptionsRead();
+    EMExtraOptionsRead();
+} /* MSG_GEN_PROCESS_OPEN_APPLICATION */
+
+/********************************************************************
+ *              MSG_EM_PROCESS_SAVE_SETTINGS
+ ********************************************************************
+ * SYNOPSIS:     Save the settings to the GEOS.INI file.
+ * CALLED BY:    EMSaveTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Read the global variables and output the settings
+ *               to the .INI file using the InitFile.. routines.
+ *               Commit, save changes and report errors.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+@extern method EMProcessClass, MSG_EM_PROCESS_SAVE_SETTINGS {
+      /*
+       * curOption     - Holds each option as it's being
+       *                 written to .INI.
+       * acrUIFeatures - Uses less space.
+       */
+    word curOption;
+    char acrUIFeatures[] = "uiFeatures";
+
+    curOption = @call EMExpressOptionsGroup::
+                          MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    InitFileWriteInteger( acrUIFeatures, "expressOptions", curOption );
+    curOption = @call EMInterfaceLevelGroup::
+                          MSG_GEN_ITEM_GROUP_GET_SELECTION();
+    InitFileWriteInteger( acrUIFeatures, "interfaceLevel", curOption );
+    curOption = @call EMInterfaceOptionsGroup::
+                          MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    InitFileWriteInteger( acrUIFeatures, "interfaceOptions", curOption );
+    curOption = @call EMLaunchLevelGroup::
+                          MSG_GEN_ITEM_GROUP_GET_SELECTION();
+    InitFileWriteInteger( acrUIFeatures, "launchLevel", curOption );
+    curOption = @call EMLaunchModelGroup::
+                          MSG_GEN_ITEM_GROUP_GET_SELECTION();
+    InitFileWriteInteger( acrUIFeatures, "launchModel", curOption );
+    curOption = @call EMLaunchOptionsGroup::
+                          MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    InitFileWriteInteger( acrUIFeatures, "launchOptions", curOption );
+    curOption = @call EMDocLevelGroup::
+                          MSG_GEN_ITEM_GROUP_GET_SELECTION();
+    InitFileWriteInteger( acrUIFeatures, "docControlFSLevel", curOption );
+    curOption = @call EMDocOptionsGroup::
+                          MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    InitFileWriteInteger( acrUIFeatures, "docControlOptions", curOption );
+    curOption = @call EMWindowOptionsGroup::
+                          MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    InitFileWriteInteger( acrUIFeatures, "windowOptions", curOption );
+    curOption = @call EMHelpOptionsGroup::
+                          MSG_GEN_BOOLEAN_GROUP_GET_SELECTED_BOOLEANS();
+    InitFileWriteInteger( acrUIFeatures, "helpOptions", curOption );
+
+    EMEMCOptionsWrite();
+    EMExtraOptionsWrite();
+    InitFileCommit();
+    if ( InitFileSave() ) {
+        ErrorMessage( @acrSaveErrMsg );
+    }
+} /* MSG_EM_PROCESS_SAVE_SETTINGS */
+
+/********************************************************************
+ *              MSG_EM_PROCESS_SET_EXPRESS_OPTIONS
+ ********************************************************************
+ * SYNOPSIS:     User is setting one of the Express menu options.
+ * PARAMETERS:   word selectedBooleans
+ *               word indeterminateBooleans
+ *               word modifiedBooleans
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Based on the options, see if the Express menu is
+ *               on or not. If so, enable the other items in this
+ *               list, else disable them.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+@extern method EMProcessClass, MSG_EM_PROCESS_SET_EXPRESS_OPTIONS {
+
+    if ( 1 & selectedBooleans ) {
+        EMExpressMenu( TRUE );
+    }
+    else {
+        EMExpressMenu( FALSE );
+    }
+} /* MSG_EM_PROCESS_SET_EXPRESS_OPTIONS */
+
+/********************************************************************
+ *              MSG_EM_PROCESS_SET_EM_CONTROL_OPTIONS
+ ********************************************************************
+ * SYNOPSIS:     User is setting one of the Express menu control
+ *               options.
+ * PARAMETERS:   word selectedBooleans
+ *               word indeterminateBooleans
+ *               word modifiedBooleans
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Based on the one setting, either disable or enable
+ *               the other items in the list.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      3/17/96         Initial version
+ *******************************************************************/
+@extern method EMProcessClass, MSG_EM_PROCESS_SET_EM_CONTROL_OPTIONS {
+
+    if ( EM_EMCO_NO_SUB_MENUS & selectedBooleans ) {
+        EMExpressMenuControls( FALSE );
+    }
+    else {
+        EMExpressMenuControls( TRUE );
+    }
+} /* MSG_EM_PROCESS_SET_EM_CONTROL_OPTIONS */
+

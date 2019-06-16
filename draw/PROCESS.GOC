@@ -1,0 +1,190 @@
+/********************************************************************
+ *
+ *      Portions Copyright (c) Geoworks 1992 -- All Rights Reserved.
+ *
+ * PROJECT:     Draw
+ * MODULE:      Process Methods
+ * FILE:        process.goc
+ *
+ * AUTHORS:     Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *      NF      2/26/96         Made compilable for OmniGo.
+ *
+ * DESCRIPTION:
+ *      This is the code for the process object.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <grobj.goh>
+    @include <ruler.goh>
+    #include <print.h>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Functions
+ *******************************************************************/
+
+/********************************************************************
+ *              Code for DProcessClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_OPEN_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Add the menu objects to the Primary window.
+ * PARAMETERS:   AppAttachFlags attachFlags
+ *               MemHandle      launchBlock
+ *               MemHandle      extraState
+ * RETURNS:      void
+ * STRATEGY:     Add the menu group to the GenPrimary and set the
+ *               group usable.
+ * REVISION HISTORY:
+ *      Name     Date           Description
+ *      ----     ----           -----------
+ *      NF       7/1/95         Initial version
+ *******************************************************************/
+@extern method DProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION {
+
+      /*
+       * Are we restoring from state? If not, add the
+       * menus and controllers.
+       */
+    if ( !( attachFlags & AAF_RESTORING_FROM_STATE ) ) {
+        /*
+         * Add menus to primary window.
+         */
+      @call DPrimary::MSG_GEN_ADD_CHILD( @DTranGroup,
+          ( CCF_MARK_DIRTY | TRANSFORM_MENU_POSITION ) );
+      @call DTranGroup::MSG_GEN_SET_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+
+      @call DPrimary::MSG_GEN_ADD_CHILD( @DAttrsGroup,
+          ( CCF_MARK_DIRTY | ATTRIBUTE_MENU_POSITION ) );
+      @call DAttrsGroup::MSG_GEN_SET_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+
+      @call DPrimary::MSG_GEN_ADD_CHILD( @DTextGroup,
+          ( CCF_MARK_DIRTY | TEXT_MENU_POSITION ) );
+      @call DTextGroup::MSG_GEN_SET_USABLE( VUM_DELAYED_VIA_APP_QUEUE );
+
+        /*
+         * Add controllers to GCN list.
+         */
+      @call application::MSG_META_GCN_LIST_ADD( @DFlipControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DScaleControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DRotateControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DSkewControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DTransformControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DConvertControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DAreaColorControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DAreaAttrControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DLineColorControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DLineAttrControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DBackgroundControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DStyleSheetControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DGradientFillControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DGradientStartColor,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DGradientEndColor,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DArcControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DSetDefaultAttrsControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DFontControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DSizeControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+@ifndef OMNIGO
+      @call application::MSG_META_GCN_LIST_ADD( @DStyleControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+@endif
+      @call application::MSG_META_GCN_LIST_ADD( @DTextFGColorControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DTextBGColorControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DCharAttrControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DJustificationControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DLineSpacingControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DParaColorControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DTabControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DDefaultTabControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DBorderControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DStyleSheetsControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DFindReplaceControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DParaSpacingControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DMarginControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DTabControl,
+          MGCNLT_ACTIVE_LIST, MANUFACTURER_ID_GEOWORKS );
+      @call application::MSG_META_GCN_LIST_ADD( @DBorderColorControl,
+          GAGCNLT_SELF_LOAD_OPTIONS, MANUFACTURER_ID_GEOWORKS );
+        /*
+         * Set document name output of print control.
+         */
+      @send DPrintControl::MSG_PRINT_CONTROL_SET_DOC_NAME_OUTPUT(
+          @DDocumentGroup );
+    } /* if not restoring from state */
+
+      /*
+       * Call superclass to initialize everything.
+       */
+    @callsuper();
+} /* MSG_GEN_PROCESS_OPEN_APPLICATION */
+
+/********************************************************************
+ *              MSG_META_SAVE_OPTIONS
+ ********************************************************************
+ * SYNOPSIS:     Tells application to save configuration.
+ * CALLED BY:    DSaveOptsTrigger
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * STRATEGY:     Call GenApplication and tell it to save it's options.
+ *               For some reason, this message can't be sent
+ *               directly from the Save Options trigger.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      7/1/95          Initial version
+ *******************************************************************/
+@extern method DProcessClass, MSG_META_SAVE_OPTIONS {
+
+      /*
+       * Call superclass to save other options.
+       */
+    @callsuper();
+
+      /* Make sure options are saved. */
+    @send application::MSG_META_SAVE_OPTIONS();
+} /* MSG_META_SAVE_OPTIONS */
+

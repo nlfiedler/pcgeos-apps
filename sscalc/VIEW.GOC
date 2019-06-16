@@ -1,0 +1,61 @@
+/********************************************************************
+ *
+ * PROJECT:     Spreadsheet
+ * MODULE:      View Methods
+ * FILE:        view.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *
+ * DESCRIPTION:
+ *      This is a simple spreadsheet program for GEOS-based PDAs.
+ *
+ *      This module contains the methods for the view.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *                 Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <objects/ssheet/sctrlc.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Local Function Prototypes
+ *******************************************************************/
+
+/********************************************************************
+ *              Code for CalcSSViewClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_META_KBD_CHAR
+ ********************************************************************
+ * SYNOPSIS:     Determine if SSEditBarControl should get the
+ *               keyboard press.
+ * PARAMETERS:   word character
+ *               word flags
+ *               word state
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Send MSG_SSEBC_INITIAL_KEYPRESS to SSEditBarControl
+ *               with parameters from message.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/20/95         Initial version
+ *******************************************************************/
+@extern method CalcSSViewClass, MSG_META_KBD_CHAR {
+
+    @send CalcSSEditBarControl::MSG_SSEBC_INITIAL_KEYPRESS(
+        character,
+        flags,
+        state );
+} /* MSG_META_KBD_CHAR */
+

@@ -1,0 +1,101 @@
+/********************************************************************
+ *
+ * PROJECT:     Alarm Clock
+ * MODULE:      Methods for Application Class
+ * FILE:        app.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *      NF      8/4/96          Fixed up indentation.
+ *
+ * DESCRIPTION:
+ *      Code for the application object. One of the methods is
+ *      responsible for updating the current time display, while
+ *      another catches any keypresses during the alarm sound off.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <rtcm.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Method Definitions
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_AC_APPLICATION_DISPLAY_CURRENT_TIME
+ ********************************************************************
+ * SYNOPSIS:     Display the current time in the time text object.
+ * PARAMETERS:   void
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Nothing to check.
+ * STRATEGY:     Get the current date and time. See if we're on a
+ *               five second boundary (0, 5, 10, 15, etc.) . If
+ *               so, get the string representation of the time and
+ *               set the time text object to that string.
+ * NOTE:         We are using the application object to handle this
+ *               message since the process thread handles the
+ *               _CLOSE_APPLICATION message and it calls TimerSleep.
+ *               We can't expect the process thread to handle any
+ *               waiting timer messages if it is sleeping.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      5/22/96         Initial version
+ *******************************************************************/
+@extern method ACApplicationClass,
+                   MSG_AC_APPLICATION_DISPLAY_CURRENT_TIME {
+       /*
+        * uCurDateTime   - Used to set the text of the time text.
+        * acrCurDateTime - Current time in string format.
+        */
+    TimerDateAndTime uCurDateTime;
+    char             acrCurDateTime[8];
+
+    TimerGetDateAndTime( &uCurDateTime );
+    if ( 0 == ( uCurDateTime.TDAT_seconds % 5 ) ) {
+        LocalFormatDateTime( acrCurDateTime, DTF_HM, &uCurDateTime );
+        @call ACTimeText::MSG_VIS_TEXT_REPLACE_ALL_PTR(
+            acrCurDateTime, 0 );
+    }
+} /* MSG_AC_APPLICATION_DISPLAY_CURRENT_TIME */
+
+/********************************************************************
+ *              MSG_META_KBD_CHAR
+ ********************************************************************
+ * SYNOPSIS:     See if we are to intercept characters or not, and
+ *               if so save the character to a capture buffer.
+ * PARAMETERS:   word character
+ *               word state
+ *               word flags
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * CHECKS:       Nothing to check.
+ * STRATEGY:     Test the flag to see if we are supposed to
+ *               intercept keypresses. If so, save the character to
+ *               a global. Otherwise call the superclass.
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      6/5/96          Initial version
+ *******************************************************************/
+@extern method ACApplicationClass, MSG_META_KBD_CHAR {
+
+    if ( ACSaveCharacters_g ) {
+        ACLastCharacter_g = character;
+    }
+    else {
+        @callsuper();
+    }
+} /* MSG_META_KBD_CHAR */
+

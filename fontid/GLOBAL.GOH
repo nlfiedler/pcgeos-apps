@@ -1,0 +1,37 @@
+/********************************************************************
+ *
+ * PROJECT:     Change Sys Font
+ * MODULE:      Global Header File
+ * FILE:        global.goh
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      1/18/96         Initial version
+ *
+ * DESCRIPTION:
+ *      This contains all the global variables, object declaractions,
+ *      and routine declarations.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Global Variable Definitions
+ *******************************************************************/
+      /*
+       * fidFontID_g - Font id to make as system font.
+       */
+    extern FontID fidFontID_g;
+
+/********************************************************************
+ *              Object Declarations
+ *******************************************************************/
+    @extern object @FIDApp;
+    @extern object @FIDGenText;
+
+/********************************************************************
+ *              Function Prototypes
+ *******************************************************************/
+

@@ -1,0 +1,126 @@
+/********************************************************************
+ *
+ * PROJECT:     Character Map
+ * MODULE:      Process Methods
+ * FILE:        process.goc
+ *
+ * AUTHOR:      Nathan Fiedler
+ *
+ * REVISION HISTORY:
+ *      Name    Date            Description
+ *      ----    ----            -----------
+ *      NF      9/23/96         Initial version
+ *
+ * DESCRIPTION:
+ *      This file contains all the process methods. Mostly we just
+ *      handle the open and close messages for the application. We
+ *      want to handle the open message so we can change the font
+ *      that is used by default. In the close we make sure the mouse
+ *      pointer definition table is freed.
+ *
+ *******************************************************************/
+
+/********************************************************************
+ *              Headers
+ *******************************************************************/
+    @include <stdapp.goh>
+    @include <Objects/Text/tctrlc.goh>
+    @include "app.goh"
+    @include "global.goh"
+
+/********************************************************************
+ *              Code for CMProcessClass
+ *******************************************************************/
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_OPEN_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Start up the application. We'll also do some extra
+ *               work to prepare the UI.
+ * PARAMETERS:   AppAttachFlags attachFlags
+ *               MemHandle      launchBlock
+ *               MemHandle      extraState
+ * RETURNS:      void
+ * SIDE EFFECTS: none
+ * STRATEGY:     Call the superclass to get default start-up
+ *               behavior. Then tell the text object to set the
+ *               font to the URW Symbol PS font. Also have the map
+ *               object create the pointer image definition.
+ * REVISION HISTORY:
+ *      Name   Date             Description
+ *      ----   ----             -----------
+ *      NF     9/23/96          Initial Version
+ *******************************************************************/
+@extern method CMProcessClass, MSG_GEN_PROCESS_OPEN_APPLICATION {
+      /*
+       * ptSize - Point size to change text to.
+       */
+    WWFixed ptSize;
+
+    @callsuper();
+
+    ptSize.WWF_int = 12;
+    ptSize.WWF_frac = 0;
+    @send CMCharsToCopyText::MSG_VIS_TEXT_SET_POINT_SIZE(
+        ptSize,
+        TEXT_ADDRESS_PAST_END,
+        1 );
+
+      /*
+       * Setting the font of the text object will send the
+       * message to the font controller. Don't try to tell
+       * the font controller what to do directly.
+       */
+    @send CMCharsToCopyText::MSG_VIS_TEXT_SET_FONT_ID(
+        FID_DTC_URW_MONO,
+        TEXT_ADDRESS_PAST_END,
+        1 );
+    @send CMMap::MSG_CM_MAP_CREATE_POINTER_DEF();
+} /* MSG_GEN_PROCESS_OPEN_APPLICATION */
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_CLOSE_APPLICATION
+ ********************************************************************
+ * SYNOPSIS:     Close down the application. We have to cleanup
+ *               a little before leaving.
+ * PARAMETERS:   void
+ * RETURNS:      MemHandle - Extra state block.
+ * SIDE EFFECTS: none
+ * STRATEGY:     First have the map object destroy the pointer
+ *               image definition. Then call the superclass to
+ *               shutdown the application.
+ * REVISION HISTORY:
+ *      Name   Date             Description
+ *      ----   ----             -----------
+ *      NF     10/14/96         Initial Version
+ *******************************************************************/
+@extern method CMProcessClass, MSG_GEN_PROCESS_CLOSE_APPLICATION {
+
+    @call CMMap::MSG_CM_MAP_DESTROY_POINTER_DEF();
+
+    return( @callsuper() );
+} /* MSG_GEN_PROCESS_CLOSE_APPLICATION */
+
+/********************************************************************
+ *              MSG_GEN_PROCESS_CREATE_NEW_STATE_FILE
+ ********************************************************************
+ * SYNOPSIS:     System wants us to create a new state file and
+ *               return a memblock
+ * PARAMETERS:   MemHandle appInstanceReference
+ * RETURNS:      word (VMFileHandle) - State file
+ * SIDE EFFECTS: none
+ * STRATEGY:     Simply return a NullHandle so we don't create a
+ *               new state file.
+ *               For some strange reason the app would crash on the
+ *               OmniGo when the user pressed Ctrl-F3 to exit. By
+ *               intercepting this message we prevent the crash.
+ * REVISION HISTORY:
+ *      Name   Date             Description
+ *      ----   ----             -----------
+ *      NF     11/14/96         Initial Version
+ *******************************************************************/
+@extern method CMProcessClass, MSG_GEN_PROCESS_CREATE_NEW_STATE_FILE {
+
+    return( NullHandle );
+} /* MSG_GEN_PROCESS_CREATE_NEW_STATE_FILE */
+
